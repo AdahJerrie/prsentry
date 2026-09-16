@@ -8,7 +8,12 @@ const severityOrder = { high: 0, medium: 1, low: 2 };
 
 export default function ExpandablePrCard({ pr }) {
   const [expanded, setExpanded] = useState(false);
-  const { data, loading, error } = useApi(expanded ? `/reviews/${pr.id}` : null);
+
+  // Only attempt to fetch a review if one could actually exist
+  const canFetchReview = pr.status === "completed";
+  const { data, loading, error } = useApi(
+    expanded && canFetchReview ? `/reviews/${pr.id}` : null
+  );
 
   return (
     <Card className="!p-0 overflow-hidden">
@@ -31,9 +36,30 @@ export default function ExpandablePrCard({ pr }) {
 
       {expanded && (
         <div className="border-t border-border p-4 space-y-3">
-          {loading && <p className="text-sm text-text-secondary">Loading findings...</p>}
-          {error && <p className="text-sm text-danger">Error: {error}</p>}
-          {data && (
+          {pr.status === "processing" && (
+            <p className="text-sm text-text-secondary flex items-center gap-2">
+              <span className="animate-pulse">●</span> Review in progress...
+            </p>
+          )}
+
+          {pr.status === "pending" && (
+            <p className="text-sm text-text-muted">Queued — review hasn't started yet.</p>
+          )}
+
+          {pr.status === "failed" && (
+            <p className="text-sm text-danger">
+              This review failed to complete. It may be retried automatically.
+            </p>
+          )}
+
+          {canFetchReview && loading && (
+            <p className="text-sm text-text-secondary">Loading findings...</p>
+          )}
+          {canFetchReview && error && (
+            <p className="text-sm text-danger">Error loading findings: {error}</p>
+          )}
+
+          {canFetchReview && data && (
             <>
               <p className="text-sm text-text-secondary">{data.summary}</p>
               <div className="space-y-2">
