@@ -1,8 +1,8 @@
+// top of useApi.js, temporarily
+console.log("API base URL:", import.meta.env.VITE_API_BASE_URL);
 // src/hooks/useApi.js
 import { useState, useEffect } from "react";
-
-const BASE_URL = "http://localhost:3001"; // TEMP: json-server mock, swap back to Go's :8080/api later
-
+const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 export function useApi(path) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(!!path);
