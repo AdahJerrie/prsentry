@@ -1,0 +1,26 @@
+{
+  "prs": [
+    { "id": 1, "title": "Fix error handling in auth package", "repo": "owner/name", "status": "completed", "risk_score": 3 },
+    { "id": 2, "title": "Add rate limiting to webhook endpoint", "repo": "owner/name", "status": "processing", "risk_score": null },
+    { "id": 3, "title": "Refactor diff chunking logic", "repo": "owner/other-repo", "status": "completed", "risk_score": 1 }
+  ],
+  "reviews": [
+    {
+      "id": 1,
+      "summary": "Refactors error handling in the auth package.",
+      "risk_score": 3,
+      "findings": [
+        { "file_path": "main.go", "line_number": 42, "severity": "medium", "category": "bug", "message": "Error from db.Query is ignored — could mask connection failures." },
+        { "file_path": "auth.go", "line_number": 18, "severity": "low", "category": "style", "message": "Variable name 'x' is unclear, consider renaming." }
+      ]
+    },
+    {
+      "id": 3,
+      "summary": "Splits large diffs into per-file chunks before analysis.",
+      "risk_score": 1,
+      "findings": [
+        { "file_path": "chunker.go", "line_number": 5, "severity": "low", "category": "maintainability", "message": "Function could use a doc comment explaining chunking strategy." }
+      ]
+    }
+  ]
+}

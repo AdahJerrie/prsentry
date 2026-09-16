@@ -1,14 +1,21 @@
 // src/hooks/useApi.js
 import { useState, useEffect } from "react";
 
-const BASE_URL = "http://localhost:8080/api"; // Go server
+const BASE_URL = "http://localhost:3001"; // TEMP: json-server mock, swap back to Go's :8080/api later
 
 export function useApi(path) {
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!path);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    if (!path) {
+      setData(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     let cancelled = false;
 
     async function fetchData() {
@@ -27,7 +34,7 @@ export function useApi(path) {
     }
 
     fetchData();
-    return () => { cancelled = true; }; // avoid setting state after unmount
+    return () => { cancelled = true; };
   }, [path]);
 
   return { data, loading, error };
