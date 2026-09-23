@@ -1,0 +1,13 @@
+# This tells sqlc where my schema lives and where to output the generated Go code.
+
+# go-service/sqlc.yaml
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "internal/db/queries.sql"
+    schema: "migrations/"
+    gen:
+      go:
+        package: "db"
+        out: "internal/db"
+        sql_package: "pgx/v5"
