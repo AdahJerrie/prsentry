@@ -1,36 +1,32 @@
 package review
 
-// FileDiff is one changed file in the PR — mirrors Python's FileDiff model.
+// FileDiff represents one modified file tracking patch data.
 type FileDiff struct {
 	Path string `json:"path"`
 	Diff string `json:"diff"`
 }
 
-// ReviewRequest is what Go sends to Python's POST /review.
-// Repo was removed (YAGNI) — nothing on the Python side reads it yet.
-// If a concrete need shows up, adding it back is a cheap additive change,
-// same as FileRisks below.
+// ReviewRequest represents the outgoing transmission to the Python microservice.
 type ReviewRequest struct {
 	PRID  int        `json:"pr_id"`
+	Repo  string     `json:"repo"` // Aligned to supply target metadata
 	Files []FileDiff `json:"files"`
 }
 
-// FileRisk is one file's individual risk verdict — mirrors Python's
-// FileRisk model. Part of ReviewResponse below.
-type FileRisk struct {
-	Path      string  `json:"path"`
-	RiskScore float64 `json:"risk_score"`
-	Reasoning string  `json:"reasoning"`
+// Finding represents an individual architectural issue discovered by the AI.
+type Finding struct {
+	FilePath   string `json:"file_path"`
+	LineNumber int    `json:"line_number"`
+	Severity   string `json:"severity"`
+	Category   string `json:"category"`
+	Message    string `json:"message"`
 }
 
-// ReviewResponse is what Python sends back from POST /review.
-// PRID and RiskScore are the locked fields per docs/api-contract.md.
-// Summary, FlaggedFiles, and FileRisks are additive — safe for Go to
-// read now that they exist, but not part of the original lock.
+// ReviewResponse captures the final structural payload from Python.
 type ReviewResponse struct {
-	PRID         int        `json:"pr_id"`
-	RiskScore    float64    `json:"risk_score"`
-	Summary      string     `json:"summary"`
-	FlaggedFiles []string   `json:"flagged_files"`
-	FileRisks    []FileRisk `json:"file_risks"`
+	PRID                int       `json:"pr_id"`
+	Summary             string    `json:"summary"`
+	RiskScore           float64   `json:"risk_score"`
+	MergeRecommendation string    `json:"merge_recommendation"`
+	Findings            []Finding `json:"findings"`
 }
