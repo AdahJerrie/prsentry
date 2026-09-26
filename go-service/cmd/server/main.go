@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
-	"prsentry/go-service/internal/db" // The package sqlc just generated
+	"prsentry/go-service/internal/db"
 	"prsentry/go-service/internal/github"
 	"prsentry/go-service/internal/review"
 	"prsentry/go-service/internal/webhook"
