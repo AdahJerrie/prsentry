@@ -61,41 +61,45 @@ func NewHandler(secret string, ghClient *github.Client, reviewClient *review.Cli
 			return
 		}
 
+		// Only process target code lifecycle triggers
 		if payload.Action != "opened" && payload.Action != "synchronize" && payload.Action != "reopened" {
 			log.Printf("Ignoring action: %s\n", payload.Action)
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 
-		// respond to GitHub immediately — we still have work to do below,
-		// but GitHub only cares that delivery succeeded
-		w.WriteHeader(http.StatusOK)
+		// 1. Acknowledge and release GitHub immediately to prevent 10s timeout retry loops
+		w.WriteHeader(http.StatusAccepted)
 
-		parts := strings.SplitN(payload.Repository.FullName, "/", 2)
-		if len(parts) != 2 {
-			log.Println("Unexpected repo format:", payload.Repository.FullName)
-			return
-		}
-		owner, repo := parts[0], parts[1]
+		// 2. Dispatch heavy blocking I/O tasks to an isolated background thread context
+		go func(p GitHubWebhookPayload) {
+			// Extract the raw full repository path string ("owner/name")
+			repoFullName := p.Repository.FullName
+			parts := strings.SplitN(repoFullName, "/", 2)
+			if len(parts) != 2 {
+				log.Println("Unexpected repo format:", repoFullName)
+				return
+			}
+			owner, repo := parts[0], parts[1]
 
-		files, err := ghClient.FetchPRFiles(payload.Installation.ID, owner, repo, payload.PullRequest.Number)
-		if err != nil {
-			log.Println("Failed to fetch PR files:", err)
-			return
-		}
+			// Fetch the code unified patch files from GitHub endpoints
+			files, err := ghClient.FetchPRFiles(p.Installation.ID, owner, repo, p.PullRequest.Number)
+			if err != nil {
+				log.Println("Failed to fetch PR files:", err)
+				return
+			}
 
-		log.Printf("Fetched %d changed file(s) for PR #%d:\n", len(files), payload.PullRequest.Number)
-		for _, f := range files {
-			log.Printf("  %s (%d bytes of diff)\n", f.Path, len(f.Diff))
-		}
+			log.Printf("Fetched %d changed file(s) for PR #%d inside %s\n", len(files), p.PullRequest.Number, repoFullName)
 
-		riskResult, err := reviewClient.SubmitForReview(payload.PullRequest.Number, files)
-		if err != nil {
-			log.Println("Failed to submit for review:", err)
-			return
-		}
+			// Submit parameters matching the updated v1 contract payload signature (pr_id, repo, files)
+			reviewResult, err := reviewClient.SubmitForReview(p.PullRequest.Number, repoFullName, files)
+			if err != nil {
+				log.Println("Failed to submit for review:", err)
+				return
+			}
 
-		log.Printf("Risk assessment for PR #%d: score=%.1f, flagged=%v\n",
-			riskResult.PRID, riskResult.RiskScore, riskResult.FlaggedFiles)
+			log.Printf("Analysis for PR #%d complete: Recommendation=%s, Risk Score=%.1f, Findings Count=%d\n",
+				reviewResult.PRID, reviewResult.MergeRecommendation, reviewResult.RiskScore, len(reviewResult.Findings))
+		}(payload)
 	}
 }

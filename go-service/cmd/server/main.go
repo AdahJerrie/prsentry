@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -49,28 +50,36 @@ func main() {
 		log.Fatal("DATABASE_URL is not set")
 	}
 
-	// 1. Create a concurrent connection pool to Postgres
-	pool, err := pgxpool.New(context.Background(), dbURL)
+	// Configure pool settings to prevent DB connection exhaustion
+	poolConfig, err := pgxpool.ParseConfig(dbURL)
+	if err != nil {
+		log.Fatalf("Unable to parse DB config: %v", err)
+	}
+	poolConfig.MaxConns = 25
+	poolConfig.MinConns = 5
+	poolConfig.MaxConnIdleTime = 5 * time.Minute
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
 	if err != nil {
 		log.Fatalf("Unable to connect to database: %v", err)
 	}
 	defer pool.Close()
 
-	// 2. Wrap the pool in the sqlc-generated Queries struct
-	queries := db.New(pool)
+	// Instantiate the Store wrapper for ACID transaction management
+	store := db.NewStore(pool)
 
-	ghClient, err := github.NewClient(appID, privateKeyPEM) //[cite: 1]
+	ghClient, err := github.NewClient(appID, privateKeyPEM)
 	if err != nil {
 		log.Fatalf("creating GitHub client: %v", err)
 	}
 
-	reviewClient := review.NewClient(pythonServiceURL) //[cite: 1]
+	reviewClient := review.NewClient(pythonServiceURL)
 
-	// 3. Pass 'queries' into your handler so it can save data
-	http.HandleFunc("/webhook", webhook.NewHandler(secret, ghClient, reviewClient, queries))
+	// Inject 'store' into the handler
+	http.HandleFunc("/webhook", webhook.NewHandler(secret, ghClient, reviewClient, store))
 
-	log.Println("Server listening on :8080")                  //[cite: 1]
-	if err := http.ListenAndServe(":8080", nil); err != nil { //[cite: 1]
-		log.Fatal(err) //[cite: 1]
+	log.Println("Server listening on :8080")
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		log.Fatal(err)
 	}
 }
