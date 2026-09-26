@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,7 +10,9 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
+	"prsentry/go-service/internal/db"
 	"prsentry/go-service/internal/github"
 	"prsentry/go-service/internal/review"
 )
@@ -29,10 +32,8 @@ func verifySignature(secret string, payload []byte, signatureHeader string) bool
 	return hmac.Equal([]byte(computedHex), []byte(expectedHex))
 }
 
-// NewHandler returns an http.HandlerFunc configured with the webhook secret,
-// a GitHub client for fetching PR data, and a review client for submitting
-// that data to the Python analysis service.
-func NewHandler(secret string, ghClient *github.Client, reviewClient *review.Client) http.HandlerFunc {
+// NewHandler now accepts *db.Store for transactional operations
+func NewHandler(secret string, ghClient *github.Client, reviewClient *review.Client, store *db.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -61,19 +62,17 @@ func NewHandler(secret string, ghClient *github.Client, reviewClient *review.Cli
 			return
 		}
 
-		// Only process target code lifecycle triggers
 		if payload.Action != "opened" && payload.Action != "synchronize" && payload.Action != "reopened" {
 			log.Printf("Ignoring action: %s\n", payload.Action)
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 
-		// 1. Acknowledge and release GitHub immediately to prevent 10s timeout retry loops
+		// 1. Acknowledge GitHub immediately
 		w.WriteHeader(http.StatusAccepted)
 
-		// 2. Dispatch heavy blocking I/O tasks to an isolated background thread context
+		// 2. Dispatch heavy async processing
 		go func(p GitHubWebhookPayload) {
-			// Extract the raw full repository path string ("owner/name")
 			repoFullName := p.Repository.FullName
 			parts := strings.SplitN(repoFullName, "/", 2)
 			if len(parts) != 2 {
@@ -82,7 +81,6 @@ func NewHandler(secret string, ghClient *github.Client, reviewClient *review.Cli
 			}
 			owner, repo := parts[0], parts[1]
 
-			// Fetch the code unified patch files from GitHub endpoints
 			files, err := ghClient.FetchPRFiles(p.Installation.ID, owner, repo, p.PullRequest.Number)
 			if err != nil {
 				log.Println("Failed to fetch PR files:", err)
@@ -91,14 +89,30 @@ func NewHandler(secret string, ghClient *github.Client, reviewClient *review.Cli
 
 			log.Printf("Fetched %d changed file(s) for PR #%d inside %s\n", len(files), p.PullRequest.Number, repoFullName)
 
-			// Submit parameters matching the updated v1 contract payload signature (pr_id, repo, files)
 			reviewResult, err := reviewClient.SubmitForReview(p.PullRequest.Number, repoFullName, files)
 			if err != nil {
 				log.Println("Failed to submit for review:", err)
 				return
 			}
 
-			log.Printf("Analysis for PR #%d complete: Recommendation=%s, Risk Score=%.1f, Findings Count=%d\n",
+			// Apply a strict 10-second timeout context for database operations
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			// Save PR, Review Run, and Findings in a single atomic transaction
+			err = store.SaveFullReviewResult(
+				ctx,
+				p.Installation.ID,
+				p.PullRequest.Number,
+				"latest", // Replace with p.PullRequest.Head.Sha when payload struct is updated
+				reviewResult,
+			)
+			if err != nil {
+				log.Printf("Failed to save review run to DB: %v\n", err)
+				return
+			}
+
+			log.Printf("Analysis for PR #%d complete and saved to DB: Recommendation=%s, Risk Score=%.1f, Findings Count=%d\n",
 				reviewResult.PRID, reviewResult.MergeRecommendation, reviewResult.RiskScore, len(reviewResult.Findings))
 		}(payload)
 	}
