@@ -11,6 +11,32 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createFinding = `-- name: CreateFinding :exec
+INSERT INTO findings (review_run_id, file_path, line_number, severity, category, message)
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type CreateFindingParams struct {
+	ReviewRunID pgtype.UUID
+	FilePath    string
+	LineNumber  int32
+	Severity    string
+	Category    string
+	Message     string
+}
+
+func (q *Queries) CreateFinding(ctx context.Context, arg CreateFindingParams) error {
+	_, err := q.db.Exec(ctx, createFinding,
+		arg.ReviewRunID,
+		arg.FilePath,
+		arg.LineNumber,
+		arg.Severity,
+		arg.Category,
+		arg.Message,
+	)
+	return err
+}
+
 const createInstallation = `-- name: CreateInstallation :one
 
 INSERT INTO installations (id, account_name)
