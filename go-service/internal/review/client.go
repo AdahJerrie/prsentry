@@ -18,25 +18,25 @@ type Client struct {
 }
 
 // NewClient builds a review.Client pointed at the Python service's base URL
-// (e.g. "http://localhost:8000"). The 10s timeout means a hung Python
-// service fails loudly and fast instead of blocking a webhook goroutine
-// forever.
+// (e.g. "http://localhost:8000"). // go-service: internal/review/client.go
+
 func NewClient(baseURL string) *Client {
 	return &Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: 60 * time.Second, // Elevated to handle multi-file AI evaluation latency
 		},
 	}
 }
 
-// SubmitForReview sends a PR's changed files to Python's POST /review and
+// SubmitForReview sends a PR's changed files alongside the target repo details to Python's POST /review and
 // returns the parsed risk assessment. Every failure point is wrapped with
 // context about which step failed, so a caller's log line says WHERE
 // things broke, not just that something did.
-func (c *Client) SubmitForReview(prID int, files []FileDiff) (*ReviewResponse, error) {
+func (c *Client) SubmitForReview(prID int, repo string, files []FileDiff) (*ReviewResponse, error) {
 	reqBody := ReviewRequest{
 		PRID:  prID,
+		Repo:  repo,
 		Files: files,
 	}
 
