@@ -1,3 +1,4 @@
+// go-service/internal/db/store.go
 package db
 
 import (
@@ -9,13 +10,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Store wraps Queries and the pgx pool to manage database transactions
 type Store struct {
 	*Queries
 	pool *pgxpool.Pool
 }
 
-// NewStore initializes a new Store instance
 func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{
 		Queries: New(pool),
@@ -23,7 +22,6 @@ func NewStore(pool *pgxpool.Pool) *Store {
 	}
 }
 
-// execTx executes a function within a database transaction context
 func (store *Store) execTx(ctx context.Context, fn func(*Queries) error) error {
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
@@ -42,11 +40,10 @@ func (store *Store) execTx(ctx context.Context, fn func(*Queries) error) error {
 	return tx.Commit(ctx)
 }
 
-// SaveFullReviewResult saves Pull Request, Review Run, and Findings in a single atomic transaction
 func (store *Store) SaveFullReviewResult(ctx context.Context, repoID int64, prNumber int, commitSha string, result *review.ReviewResponse) error {
 	return store.execTx(ctx, func(q *Queries) error {
 
-		// 1. Create or update Pull Request record
+		// 1. Upsert Pull Request (Using pgtype.Text wrappers)
 		pr, err := q.CreatePullRequest(ctx, CreatePullRequestParams{
 			RepositoryID: repoID,
 			PrNumber:     int32(prNumber),
@@ -59,11 +56,9 @@ func (store *Store) SaveFullReviewResult(ctx context.Context, repoID int64, prNu
 
 		// Convert float64 RiskScore (e.g. 8.5) to pgtype.Numeric
 		var riskScoreNumeric pgtype.Numeric
-		if err := riskScoreNumeric.Scan(fmt.Sprintf("%.2f", result.RiskScore)); err != nil {
-			return fmt.Errorf("failed to parse risk score: %w", err)
-		}
+		_ = riskScoreNumeric.Scan(fmt.Sprintf("%.2f", result.RiskScore))
 
-		// 2. Insert Review Run linking to the Pull Request ID
+		// 2. Insert Review Run (Passing pr.ID returned from previous query)
 		run, err := q.CreateReviewRun(ctx, CreateReviewRunParams{
 			PullRequestID:       pr.ID,
 			CommitSha:           pgtype.Text{String: commitSha, Valid: true},
@@ -75,7 +70,7 @@ func (store *Store) SaveFullReviewResult(ctx context.Context, repoID int64, prNu
 			return fmt.Errorf("failed to insert review run: %w", err)
 		}
 
-		// 3. Insert all individual findings
+		// 3. Insert Findings
 		for _, f := range result.Findings {
 			err = q.CreateFinding(ctx, CreateFindingParams{
 				ReviewRunID: run.ID,
