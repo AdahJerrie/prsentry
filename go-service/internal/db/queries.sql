@@ -17,3 +17,7 @@ RETURNING *;
 INSERT INTO review_runs (pull_request_id, commit_sha, summary, risk_score, merge_recommendation)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
+
+-- name: CreateFinding :exec
+INSERT INTO findings (review_run_id, file_path, line_number, severity, category, message)
+VALUES ($1, $2, $3, $4, $5, $6);
