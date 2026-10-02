@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # 1. Local PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: prsentry-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: prsentry
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: prsentry_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      # Persists database data across container restarts
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prsentry -d prsentry_dev"]
+      interval: 3s
+      timeout: 5s
+      retries: 5
+
+  # 2. Automated Database Migration Runner
+  migrations:
+    image: migrate/migrate
+    container_name: prsentry-migrations
+    volumes:
+      - ./migrations:/migrations
+    command:
+      - -path=/migrations
+      - -database=postgres://prsentry:secret@postgres:5432/prsentry_dev?sslmode=disable
+      - up
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
