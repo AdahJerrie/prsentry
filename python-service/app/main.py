@@ -44,9 +44,9 @@ def health():
 
 
 @app.post(
-        "/review", 
-        response_model=ReviewResponse
-        dependencies=[Depends(verify_internal_token)]
+    "/review", 
+    response_model=ReviewResponse,
+    dependencies=[Depends(verify_internal_token)]
 )
 async def review(request: ReviewRequest):
     """
