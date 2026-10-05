@@ -14,15 +14,17 @@ import (
 // anthropic.Anthropic() instance.
 type Client struct {
 	baseURL    string
+	authToken  string
 	httpClient *http.Client
 }
 
 // NewClient builds a review.Client pointed at the Python service's base URL
 // (e.g. "http://localhost:8000"). // go-service: internal/review/client.go
 
-func NewClient(baseURL string) *Client {
+func NewClient(baseURL string, authToken string) *Client {
 	return &Client{
-		baseURL: baseURL,
+		baseURL:   baseURL,
+		authToken: authToken, // Ensure this is set to the same token used in the Python service for internal auth
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second, // Elevated to handle multi-file AI evaluation latency
 		},
@@ -54,6 +56,11 @@ func (c *Client) SubmitForReview(prID int, repo string, files []FileDiff) (*Revi
 		return nil, fmt.Errorf("failed to build review request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+
+	// Set the internal auth token header for secure communication with the Python service
+	if c.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.authToken)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
