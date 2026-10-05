@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -54,6 +55,14 @@ func main() {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		log.Fatal("DATABASE_URL is not set")
+	}
+
+	// ADD THIS GUARDRAIL: Enforce SSL in production environments
+	envMode := os.Getenv("ENVIRONMENT")
+	if envMode == "production" {
+		if strings.Contains(dbURL, "sslmode=disable") {
+			log.Fatal("SECURITY ERROR: DATABASE_URL contains sslmode=disable while ENVIRONMENT=production. Refusing to start in plain-text mode.")
+		}
 	}
 
 	// Configure pool settings to prevent DB connection exhaustion
