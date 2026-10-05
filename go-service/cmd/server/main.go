@@ -45,6 +45,12 @@ func main() {
 		log.Fatal("PYTHON_SERVICE_URL is not set")
 	}
 
+	// 1. Add the environment check for the internal auth token
+	internalAuthToken := os.Getenv("INTERNAL_AUTH_TOKEN")
+	if internalAuthToken == "" {
+		log.Fatal("INTERNAL_AUTH_TOKEN is not set")
+	}
+
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		log.Fatal("DATABASE_URL is not set")
@@ -73,7 +79,7 @@ func main() {
 		log.Fatalf("creating GitHub client: %v", err)
 	}
 
-	reviewClient := review.NewClient(pythonServiceURL)
+	reviewClient := review.NewClient(pythonServiceURL, internalAuthToken)
 
 	// Inject 'store' into the handler
 	http.HandleFunc("/webhook", webhook.NewHandler(secret, ghClient, reviewClient, store))
