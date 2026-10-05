@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 
 	"prsentry/go-service/internal/review"
 )
+
+const maxDiffBytes = 100 * 1024 // 100 KB limit per file diff
 
 type Client struct {
 	appID      string
@@ -88,6 +91,23 @@ type prFile struct {
 	Patch    string `json:"patch"` // may be empty for binary/huge files
 }
 
+// isGeneratedFile filters out dependency lockfiles or minified assets.
+func isGeneratedFile(filename string) bool {
+	ignored := []string{
+		"package-lock.json",
+		"yarn.lock",
+		"pnpm-lock.yaml",
+		"go.sum",
+		"Cargo.lock",
+	}
+	for _, name := range ignored {
+		if strings.HasSuffix(filename, name) {
+			return true
+		}
+	}
+	return strings.HasSuffix(filename, ".min.js") || strings.HasSuffix(filename, ".min.css")
+}
+
 // FetchPRFiles returns the changed files for a PR, already shaped as
 // review.FileDiff — ready to drop straight into a ReviewRequest.
 func (c *Client) FetchPRFiles(installationID int64, owner, repo string, prNumber int) ([]review.FileDiff, error) {
@@ -125,9 +145,15 @@ func (c *Client) FetchPRFiles(installationID int64, owner, repo string, prNumber
 		if f.Patch == "" {
 			continue // binary or too-large file — GitHub omits the patch
 		}
+
+		patch := f.Patch
+		if len(patch) > maxDiffBytes {
+			patch = patch[:maxDiffBytes] + "\n... [Diff truncated: exceeded 100kb size limit]\n"
+		}
+
 		diffs = append(diffs, review.FileDiff{
 			Path: f.Filename,
-			Diff: f.Patch,
+			Diff: patch,
 		})
 	}
 	return diffs, nil
