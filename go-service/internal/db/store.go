@@ -1,13 +1,14 @@
-// go-service/internal/db/store.go
 package db
 
 import (
 	"context"
 	"fmt"
-	"prsentry/go-service/internal/review"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"prsentry/go-service/internal/review"
 )
 
 type Store struct {
@@ -87,4 +88,135 @@ func (store *Store) SaveFullReviewResult(ctx context.Context, repoID int64, prNu
 
 		return nil
 	})
+}
+
+// ============================================================================
+// READ API METHODS FOR REACT DASHBOARD
+// ============================================================================
+
+// PRSummary represents a lightweight pull request item for the dashboard list view.
+type PRSummary struct {
+	ID                  int64     `json:"id"`
+	RepoFullName        string    `json:"repo_full_name"`
+	PRNumber            int       `json:"pr_number"`
+	HeadSHA             string    `json:"head_sha"`
+	RiskScore           float64   `json:"risk_score"`
+	MergeRecommendation string    `json:"merge_recommendation"`
+	Summary             string    `json:"summary"`
+	CreatedAt           time.Time `json:"created_at"`
+}
+
+// PRFinding represents an individual AI finding for a given PR.
+type PRFinding struct {
+	ID         int64  `json:"id"`
+	FilePath   string `json:"file_path"`
+	LineNumber int    `json:"line_number"`
+	Severity   string `json:"severity"`
+	Category   string `json:"category"`
+	Message    string `json:"message"`
+}
+
+// ListPRs fetches all analyzed PRs ordered by creation date.
+func (s *Store) ListPRs(ctx context.Context) ([]PRSummary, error) {
+	query := `
+		SELECT 
+			pr.id,
+			r.full_name,
+			pr.pr_number,
+			rr.commit_sha,
+			rr.risk_score,
+			rr.merge_recommendation,
+			rr.summary,
+			rr.created_at
+		FROM pull_requests pr
+		JOIN repositories r ON pr.repository_id = r.id
+		JOIN review_runs rr ON pr.id = rr.pull_request_id
+		ORDER BY rr.created_at DESC
+	`
+
+	rows, err := s.pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("querying PRs: %w", err)
+	}
+	defer rows.Close()
+
+	var summaries []PRSummary
+	for rows.Next() {
+		var (
+			sum       PRSummary
+			shaText   pgtype.Text
+			scoreNum  pgtype.Numeric
+			createdAt pgtype.Timestamptz
+		)
+
+		err := rows.Scan(
+			&sum.ID,
+			&sum.RepoFullName,
+			&sum.PRNumber,
+			&shaText,
+			&scoreNum,
+			&sum.MergeRecommendation,
+			&sum.Summary,
+			&createdAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scanning PR row: %w", err)
+		}
+
+		// Map pgtype values
+		sum.HeadSHA = shaText.String
+		sum.CreatedAt = createdAt.Time
+
+		// Convert Numeric to float64
+		val, _ := scoreNum.Float64Value()
+		if val.Valid {
+			sum.RiskScore = val.Float64
+		}
+
+		summaries = append(summaries, sum)
+	}
+
+	return summaries, nil
+}
+
+// GetPRFindings fetches all AI findings associated with a specific PR ID.
+func (s *Store) GetPRFindings(ctx context.Context, prID int64) ([]PRFinding, error) {
+	query := `
+		SELECT 
+			f.id,
+			f.file_path,
+			f.line_number,
+			f.severity,
+			f.category,
+			f.message
+		FROM findings f
+		JOIN review_runs rr ON f.review_run_id = rr.id
+		WHERE rr.pull_request_id = $1
+		ORDER BY f.id ASC
+	`
+
+	rows, err := s.pool.Query(ctx, query, prID)
+	if err != nil {
+		return nil, fmt.Errorf("querying findings: %w", err)
+	}
+	defer rows.Close()
+
+	var findings []PRFinding
+	for rows.Next() {
+		var f PRFinding
+		err := rows.Scan(
+			&f.ID,
+			&f.FilePath,
+			&f.LineNumber,
+			&f.Severity,
+			&f.Category,
+			&f.Message,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scanning finding row: %w", err)
+		}
+		findings = append(findings, f)
+	}
+
+	return findings, nil
 }
