@@ -103,9 +103,6 @@ func main() {
 	mux.HandleFunc("/api/v1/prs", apiHandler.ListPRsHandler)
 	mux.HandleFunc("/api/v1/prs/", apiHandler.GetPRFindingsHandler) // Matches /api/v1/prs/{id}/findings
 
-	// Inject 'store' into the handler
-	mux.HandleFunc("/webhook", webhook.NewHandler(secret, ghClient, reviewClient, store))
-
 	log.Println("Server listening on :8080")
 	if err := http.ListenAndServe(":8080", mux); err != nil {
 		log.Fatal(err)
