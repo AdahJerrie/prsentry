@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
+	"prsentry/go-service/internal/api"
 	"prsentry/go-service/internal/db"
 	"prsentry/go-service/internal/github"
 	"prsentry/go-service/internal/review"
@@ -90,11 +91,23 @@ func main() {
 
 	reviewClient := review.NewClient(pythonServiceURL, internalAuthToken)
 
+	mux := http.NewServeMux()
+
+	// Instantiate API Handler
+	apiHandler := api.NewAPIHandler(store)
+
+	// Register Webhook Router
+	mux.HandleFunc("/webhook", webhook.NewHandler(secret, ghClient, reviewClient, store))
+
+	// Register Read API Endpoints for Dashboard
+	mux.HandleFunc("/api/v1/prs", apiHandler.ListPRsHandler)
+	mux.HandleFunc("/api/v1/prs/", apiHandler.GetPRFindingsHandler) // Matches /api/v1/prs/{id}/findings
+
 	// Inject 'store' into the handler
-	http.HandleFunc("/webhook", webhook.NewHandler(secret, ghClient, reviewClient, store))
+	mux.HandleFunc("/webhook", webhook.NewHandler(secret, ghClient, reviewClient, store))
 
 	log.Println("Server listening on :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	if err := http.ListenAndServe(":8080", mux); err != nil {
 		log.Fatal(err)
 	}
 }
