@@ -25,4 +25,5 @@ react-dashboard/build/
 .DS_Store
 .vscode/
 .idea/
+certs/
 *.pem
