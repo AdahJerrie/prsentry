@@ -1,0 +1,43 @@
+name: React Dashboard CI
+
+on:
+  push:
+    branches: [main, react-dashboard]
+    paths:
+      - "react-dashboard/**"
+      - ".github/workflows/react-ci.yml"
+  pull_request:
+    paths:
+      - "react-dashboard/**"
+      - ".github/workflows/react-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Typecheck & Production Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: react-dashboard/package-lock.json
+
+      - name: Install dependencies
+        working-directory: react-dashboard
+        run: npm ci
+
+      - name: TypeScript check
+        working-directory: react-dashboard
+        run: npm run typecheck
+
+      - name: Build production bundle
+        working-directory: react-dashboard
+        run: npm run build

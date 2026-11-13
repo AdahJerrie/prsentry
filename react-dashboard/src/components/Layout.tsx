@@ -1,92 +1,77 @@
 import { useEffect, useState } from "react";
-import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { NavLink, Outlet } from "react-router-dom";
+import { checkApiHealth } from "../api/client";
 
 export default function Layout() {
-  const { user, isLocked, lockSession, logout } = useAuth();
-  const navigate = useNavigate();
   const [apiHealthy, setApiHealthy] = useState<boolean | null>(null);
 
   useEffect(() => {
-    let active = true;
-    const rawBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "/api/v1";
-    const healthUrl = rawBase.startsWith("http")
-      ? `${new URL(rawBase).origin}/health`
-      : "/health";
+    const controller = new AbortController();
+    let mounted = true;
 
-    fetch(healthUrl)
-      .then((res) => {
-        if (active) setApiHealthy(res.ok);
-      })
-      .catch(() => {
-        if (active) setApiHealthy(false);
-      });
+    checkApiHealth(controller.signal).then((ok) => {
+      if (mounted) setApiHealthy(ok);
+    });
 
     return () => {
-      active = false;
+      mounted = false;
+      controller.abort();
     };
   }, []);
 
-  // Gate protected routes behind AuthGate
-  if (!user || isLocked) {
-    return <Navigate to="/auth" replace />;
-  }
-
-  const initials = user.username.slice(0, 2).toUpperCase();
-
-  function handleLock() {
-    lockSession();
-    navigate("/auth");
-  }
-
-  function handleLogout() {
-    logout();
-    navigate("/");
-  }
-
   return (
-    <div className="studio-canvas min-h-screen text-text-primary flex flex-col relative">
-      <div className="studio-noise-overlay" aria-hidden="true" />
+    <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-accent focus:px-3 focus:py-2 focus:text-xs focus:font-semibold focus:text-bg-primary"
+      >
+        Skip to main content
+      </a>
 
-      <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-[#0E1116]/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          {/* Left: Brand Wordmark + Navigation */}
-          <div className="flex items-center gap-5">
-            <NavLink to="/" className="flex items-center gap-2.5 group">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#141820] border border-white/[0.12] font-mono text-sm font-bold text-[#FFB224]">
-                ◈
+      <header className="sticky top-0 z-20 border-b border-border bg-bg-secondary/90 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-2.5 px-4 py-3.5 sm:px-6">
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+            <NavLink
+              to="/"
+              className="flex items-center gap-2.5 group rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <div
+                aria-hidden="true"
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/15 border border-accent/35 text-accent font-bold text-sm"
+              >
+                PS
               </div>
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-base font-semibold tracking-tight text-text-primary group-hover:text-[#7C8AFF] transition-colors">
+              <div>
+                <span className="text-base font-semibold tracking-tight text-text-primary group-hover:text-accent transition-colors">
                   PRSentry
                 </span>
-                <span className="rounded border border-white/[0.1] bg-[#141820] px-1.5 py-0.5 font-mono text-[10px] text-text-muted">
-                  v1.0-beta
+                <span className="hidden md:inline-block ml-2 text-xs text-text-muted">
+                  AI Pull Request Security &amp; Code Review
                 </span>
               </div>
             </NavLink>
 
-            <nav className="flex items-center gap-1 font-mono text-xs">
+            <nav aria-label="Primary" className="flex items-center gap-1 text-sm">
               <NavLink
-                to="/dashboard"
+                to="/"
                 end
                 className={({ isActive }) =>
-                  `rounded-md px-3 py-1.5 font-medium transition-colors ${
+                  `rounded-md px-3 py-1.5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                     isActive
-                      ? "bg-[#1B202B] text-text-primary border border-white/[0.1]"
-                      : "text-text-secondary hover:text-text-primary hover:bg-[#141820]"
+                      ? "bg-bg-tertiary text-text-primary border border-border"
+                      : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60"
                   }`
                 }
               >
-                PR Workspace
+                Pull Requests
               </NavLink>
               <NavLink
                 to="/stats"
                 className={({ isActive }) =>
-                  `rounded-md px-3 py-1.5 font-medium transition-colors ${
+                  `rounded-md px-3 py-1.5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                     isActive
-                      ? "bg-[#1B202B] text-text-primary border border-white/[0.1]"
-                      : "text-text-secondary hover:text-text-primary hover:bg-[#141820]"
+                      ? "bg-bg-tertiary text-text-primary border border-border"
+                      : "text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60"
                   }`
                 }
               >
@@ -95,74 +80,33 @@ export default function Layout() {
             </nav>
           </div>
 
-          {/* Right: Security Guarantees, API Health, Active User Pill, Lock & Log Out */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Webhook Integrity Indicator */}
-            <div className="hidden xl:flex items-center gap-1.5 rounded border border-white/[0.08] bg-[#141820] px-2.5 py-1 font-mono text-[11px] text-text-secondary">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#34D399]" />
-              <span>HMAC-SHA256 · Zero-Retention LLM</span>
-            </div>
-
-            {/* Go API Health Indicator */}
-            <div className="hidden md:flex items-center gap-1.5 rounded border border-white/[0.08] bg-[#141820] px-2.5 py-1 font-mono text-[11px] text-text-secondary">
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  apiHealthy === null
-                    ? "bg-text-muted"
-                    : apiHealthy
-                      ? "bg-[#34D399]"
-                      : "bg-[#FFB224]"
-                }`}
-              />
-              <span>
-                {apiHealthy === null
-                  ? "Checking API..."
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 text-xs text-text-secondary"
+          >
+            <span
+              aria-hidden="true"
+              className={`h-2 w-2 rounded-full ${
+                apiHealthy === null
+                  ? "bg-text-muted"
                   : apiHealthy
-                    ? "Go API Live"
-                    : "Institutional Seed Mode"}
-              </span>
-            </div>
-
-            {/* Active User Pill */}
-            <div className="flex items-center gap-2 rounded-md border border-white/[0.1] bg-[#141820] px-2.5 py-1 font-mono text-xs">
-              <span className="flex h-5 w-5 items-center justify-center rounded bg-[#7C8AFF]/20 text-[10px] font-bold text-[#7C8AFF]">
-                {initials}
-              </span>
-              <span className="text-text-primary">@{user.username}</span>
-              <span
-                className={`rounded px-1.5 py-0.2 text-[10px] font-semibold ${
-                  user.provider === "GitHub"
-                    ? "bg-[#34D399]/15 text-[#34D399]"
-                    : "bg-[#FFB224]/15 text-[#FFB224]"
-                }`}
-              >
-                {user.provider}
-              </span>
-            </div>
-
-            {/* Manual Lock Session Action */}
-            <button
-              type="button"
-              onClick={handleLock}
-              title="Lock session on shared lab workstation"
-              className="rounded-md border border-white/[0.1] bg-[#141820] px-2.5 py-1 font-mono text-xs text-text-secondary hover:text-[#FFB224] hover:border-[#FFB224]/40 transition-colors cursor-pointer"
-            >
-              Lock Session
-            </button>
-
-            {/* Log Out Button */}
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-md border border-[#F87171]/35 bg-[#F87171]/12 px-2.5 py-1 font-mono text-xs font-medium text-[#F87171] hover:bg-[#F87171]/20 transition-colors cursor-pointer"
-            >
-              Log Out
-            </button>
+                    ? "bg-success"
+                    : "bg-danger"
+              }`}
+            />
+            <span>
+              {apiHealthy === null
+                ? "Checking API..."
+                : apiHealthy
+                  ? "Go API Connected"
+                  : "Go API Unreachable"}
+            </span>
           </div>
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">
+      <main id="main-content" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8">
         <Outlet />
       </main>
     </div>

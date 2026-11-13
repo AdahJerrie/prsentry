@@ -161,4 +161,13 @@ func TestAPIRoutesAndSecurityMiddleware(t *testing.T) {
 	if badIDRec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 on malformed UUID, got %d", badIDRec.Code)
 	}
+
+	// 5. Reject invalid status or recommendation filter query parameters
+	badFilterReq := httptest.NewRequest(http.MethodGet, "/api/v1/prs?recommendation=unknown", nil)
+	badFilterReq.Header.Set("Authorization", "Bearer secret_dash_key")
+	badFilterRec := httptest.NewRecorder()
+	secured.ServeHTTP(badFilterRec, badFilterReq)
+	if badFilterRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 on invalid recommendation filter, got %d", badFilterRec.Code)
+	}
 }

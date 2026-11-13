@@ -39,6 +39,16 @@ def test_review_rejects_missing_or_wrong_auth_token():
     assert bad_auth.status_code == 401
 
 
+def test_review_rejects_malformed_repo_format():
+    client = TestClient(app)
+    res = client.post(
+        "/review",
+        headers={"Authorization": "Bearer test_shared_secret_token"},
+        json={"pr_id": 10, "repo": "not-owner-slash-repo", "files": []},
+    )
+    assert res.status_code == 422
+
+
 def test_review_returns_structured_findings_and_block_on_high_severity():
     fake_tool_block = SimpleNamespace(
         type="tool_use",
