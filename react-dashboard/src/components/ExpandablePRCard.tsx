@@ -1,19 +1,14 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchPRFindings } from "../api/client";
-import type { PRFinding, PRSummary } from "../types/api";
+import { RECOMMENDATION_LABELS, type PRFinding, type PRSummary } from "../types/api";
 import Badge from "./Badge";
+import FindingItem from "./FindingItem";
 import RiskMeter from "./RiskMeter";
 
 interface ExpandablePRCardProps {
   pr: PRSummary;
 }
-
-const RECOMMENDATION_LABELS: Record<string, string> = {
-  safe: "Safe to Merge",
-  caution: "Merge with Caution",
-  block: "Block Merge",
-};
 
 export default function ExpandablePRCard({ pr }: ExpandablePRCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -21,21 +16,27 @@ export default function ExpandablePRCard({ pr }: ExpandablePRCardProps) {
   const [loadingFindings, setLoadingFindings] = useState(false);
   const [findingsError, setFindingsError] = useState<string | null>(null);
 
-  async function handleToggleExpand() {
+  const previewPanelId = `pr-preview-${pr.id}`;
+
+  async function loadFindings() {
+    setLoadingFindings(true);
+    setFindingsError(null);
+    try {
+      const result = await fetchPRFindings(pr.id);
+      setFindings(result);
+    } catch (err) {
+      setFindingsError(err instanceof Error ? err.message : "Failed to load findings");
+    } finally {
+      setLoadingFindings(false);
+    }
+  }
+
+  function handleToggleExpand() {
     const next = !expanded;
     setExpanded(next);
 
     if (next && findings === null && pr.review_status === "completed" && pr.findings_count > 0) {
-      setLoadingFindings(true);
-      setFindingsError(null);
-      try {
-        const result = await fetchPRFindings(pr.id);
-        setFindings(result);
-      } catch (err) {
-        setFindingsError(err instanceof Error ? err.message : "Failed to load findings");
-      } finally {
-        setLoadingFindings(false);
-      }
+      void loadFindings();
     }
   }
 
@@ -44,13 +45,13 @@ export default function ExpandablePRCard({ pr }: ExpandablePRCardProps) {
 
   return (
     <article className="rounded-xl border border-border bg-bg-secondary transition-colors hover:border-border/90 overflow-hidden">
-      <div className="p-4 sm:p-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="p-4 sm:p-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
             <span className="font-mono font-medium text-accent">{pr.repo_full_name}</span>
-            <span>•</span>
+            <span aria-hidden="true">•</span>
             <span className="font-mono">#{pr.pr_number}</span>
-            <span>•</span>
+            <span aria-hidden="true">•</span>
             <Badge variant={pr.pr_status}>{pr.pr_status}</Badge>
             <span className="font-mono text-text-muted">commit {shortSha}</span>
           </div>
@@ -58,7 +59,7 @@ export default function ExpandablePRCard({ pr }: ExpandablePRCardProps) {
           <div className="flex items-baseline gap-2">
             <Link
               to={`/prs/${pr.id}`}
-              className="text-base font-semibold text-text-primary hover:text-accent transition-colors truncate"
+              className="text-base font-semibold text-text-primary hover:text-accent transition-colors truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
             >
               {pr.title || `Pull Request #${pr.pr_number}`}
             </Link>
@@ -70,11 +71,11 @@ export default function ExpandablePRCard({ pr }: ExpandablePRCardProps) {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+        <div className="flex flex-wrap items-center gap-3 lg:justify-end">
           <RiskMeter score={pr.risk_score} compact />
 
           <Badge variant={pr.merge_recommendation}>
-            {RECOMMENDATION_LABELS[pr.merge_recommendation] ?? pr.merge_recommendation}
+            {RECOMMENDATION_LABELS[pr.merge_recommendation]}
           </Badge>
 
           <div className="flex items-center gap-1.5 text-xs text-text-secondary">
@@ -89,14 +90,16 @@ export default function ExpandablePRCard({ pr }: ExpandablePRCardProps) {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              aria-expanded={expanded}
+              aria-controls={previewPanelId}
               onClick={handleToggleExpand}
-              className="rounded-lg border border-border bg-bg-tertiary px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+              className="rounded-lg border border-border bg-bg-tertiary px-2.5 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               {expanded ? "Hide Preview" : "Quick Preview"}
             </button>
             <Link
               to={`/prs/${pr.id}`}
-              className="rounded-lg bg-accent/15 border border-accent/35 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/25 transition-colors"
+              className="rounded-lg bg-accent/15 border border-accent/35 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/25 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               Full Report →
             </Link>
@@ -105,7 +108,10 @@ export default function ExpandablePRCard({ pr }: ExpandablePRCardProps) {
       </div>
 
       {expanded && (
-        <div className="border-t border-border bg-bg-primary/60 p-4 sm:p-5 space-y-3">
+        <div
+          id={previewPanelId}
+          className="border-t border-border bg-bg-primary/60 p-4 sm:p-5 space-y-3"
+        >
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
               AI Review Summary
@@ -114,11 +120,33 @@ export default function ExpandablePRCard({ pr }: ExpandablePRCardProps) {
           </div>
           <p className="text-sm text-text-secondary leading-relaxed">{pr.summary}</p>
 
+          {pr.review_status === "pending" && (
+            <p className="text-xs text-text-muted">Review is queued and has not started yet.</p>
+          )}
+          {pr.review_status === "processing" && (
+            <p className="text-xs text-accent animate-pulse">AI diff analysis is in progress...</p>
+          )}
+          {pr.review_status === "failed" && (
+            <p role="alert" className="text-xs text-danger">
+              Automated review encountered an upstream failure. Manual code review is advised.
+            </p>
+          )}
+
           {loadingFindings && (
             <p className="text-xs text-text-muted animate-pulse">Loading findings from Go API...</p>
           )}
+
           {findingsError && (
-            <p className="text-xs text-danger">Failed to load findings: {findingsError}</p>
+            <div role="alert" className="flex items-center gap-3 text-xs text-danger">
+              <span>Failed to load findings: {findingsError}</span>
+              <button
+                type="button"
+                onClick={() => void loadFindings()}
+                className="underline hover:text-text-primary cursor-pointer"
+              >
+                Retry
+              </button>
+            </div>
           )}
 
           {pr.findings_count === 0 && pr.review_status === "completed" && (
@@ -130,21 +158,7 @@ export default function ExpandablePRCard({ pr }: ExpandablePRCardProps) {
           {findings && findings.length > 0 && (
             <div className="space-y-2 pt-1">
               {findings.map((finding) => (
-                <div
-                  key={finding.id}
-                  className="rounded-lg border border-border bg-bg-secondary p-3 flex flex-col sm:flex-row sm:items-start gap-2.5 text-sm"
-                >
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Badge variant={finding.severity}>{finding.severity.toUpperCase()}</Badge>
-                    <Badge variant={finding.category}>{finding.category}</Badge>
-                  </div>
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <p className="font-mono text-xs text-accent break-all">
-                      {finding.file_path}:{finding.line_number}
-                    </p>
-                    <p className="text-text-primary text-sm">{finding.message}</p>
-                  </div>
-                </div>
+                <FindingItem key={finding.id} finding={finding} compact />
               ))}
             </div>
           )}

@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchDashboardStats, fetchPRs } from "../api/client";
 import ExpandablePRCard from "../components/ExpandablePRCard";
-import type { DashboardStats, PRSummary } from "../types/api";
+import type {
+  DashboardStats,
+  MergeRecommendation,
+  PRListFilterStatus,
+  PRSummary,
+} from "../types/api";
 
 export default function PRList() {
   const [prs, setPrs] = useState<PRSummary[]>([]);
@@ -9,12 +14,14 @@ export default function PRList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Server-side filters matching GET /api/v1/prs?repo=&status=&recommendation=
   const [repoFilter, setRepoFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [recFilter, setRecFilter] = useState("");
-  // Client-side instant search across title, PR number, author, SHA
+  const [statusFilter, setStatusFilter] = useState<PRListFilterStatus | "">("");
+  const [recFilter, setRecFilter] = useState<MergeRecommendation | "">("");
   const [searchQuery, setSearchQuery] = useState("");
+
+  const hasActiveFilters = Boolean(
+    repoFilter || statusFilter || recFilter || searchQuery.trim()
+  );
 
   const loadData = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -61,6 +68,13 @@ export default function PRList() {
     );
   }, [prs, searchQuery]);
 
+  function handleClearFilters() {
+    setRepoFilter("");
+    setStatusFilter("");
+    setRecFilter("");
+    setSearchQuery("");
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -72,16 +86,17 @@ export default function PRList() {
         </div>
         <button
           type="button"
+          disabled={loading}
           onClick={() => void loadData()}
-          className="self-start sm:self-auto rounded-lg border border-border bg-bg-secondary px-3.5 py-2 text-xs font-medium text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
+          className="self-start sm:self-auto rounded-lg border border-border bg-bg-secondary px-3.5 py-2 text-xs font-medium text-text-primary hover:bg-bg-tertiary disabled:opacity-60 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-          Refresh
+          {loading ? "Refreshing..." : "Refresh"}
         </button>
       </div>
 
       {/* KPI Summary Strip */}
       {stats && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <section aria-label="Review overview metrics" className="grid grid-cols-1 gap-3 min-[460px]:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl border border-border bg-bg-secondary p-4">
             <p className="text-xs font-medium text-text-muted">Analyzed PRs</p>
             <p className="mt-1 text-2xl font-bold tabular-nums">{stats.total_prs}</p>
@@ -118,13 +133,14 @@ export default function PRList() {
               {stats.total_findings} active findings total
             </p>
           </div>
-        </div>
+        </section>
       )}
 
       {/* Search & Filter Controls */}
-      <div className="grid grid-cols-1 gap-3 rounded-xl border border-border bg-bg-secondary p-4 sm:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 rounded-xl border border-border bg-bg-secondary p-4 sm:grid-cols-2 lg:grid-cols-4">
         <input
           type="search"
+          aria-label="Search pull requests by title, PR number, author, or commit SHA"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search title, #PR, author, SHA..."
@@ -147,7 +163,7 @@ export default function PRList() {
 
         <select
           value={recFilter}
-          onChange={(e) => setRecFilter(e.target.value)}
+          onChange={(e) => setRecFilter(e.target.value as MergeRecommendation | "")}
           aria-label="Filter by merge recommendation"
           className="rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
         >
@@ -159,7 +175,7 @@ export default function PRList() {
 
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => setStatusFilter(e.target.value as PRListFilterStatus | "")}
           aria-label="Filter by status"
           className="rounded-lg border border-border bg-bg-primary px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none"
         >
@@ -174,7 +190,7 @@ export default function PRList() {
 
       {/* Main Content States */}
       {loading && (
-        <div className="space-y-3">
+        <div role="status" aria-busy="true" aria-label="Loading pull requests" className="space-y-3">
           {[1, 2, 3].map((n) => (
             <div
               key={n}
@@ -185,23 +201,41 @@ export default function PRList() {
       )}
 
       {!loading && error && (
-        <div className="rounded-xl border border-danger/40 bg-danger/10 p-6 text-sm">
-          <p className="font-semibold text-danger">Could not reach PRSentry Go Backend</p>
-          <p className="mt-1 text-text-secondary">{error}</p>
-          <p className="mt-2 text-xs text-text-muted">
-            Verify the Go server is listening on port 8080 and PostgreSQL migrations are applied.
-          </p>
+        <div role="alert" className="rounded-xl border border-danger/40 bg-danger/10 p-6 text-sm space-y-3">
+          <div>
+            <p className="font-semibold text-danger">Could not reach PRSentry Go Backend</p>
+            <p className="mt-1 text-text-secondary">{error}</p>
+            <p className="mt-1.5 text-xs text-text-muted">
+              Verify the Go server is listening on port 8080 and PostgreSQL migrations are applied.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            className="rounded-lg border border-danger/40 bg-bg-secondary px-3 py-1.5 text-xs font-medium text-text-primary hover:bg-bg-tertiary transition-colors cursor-pointer"
+          >
+            Try Again
+          </button>
         </div>
       )}
 
       {!loading && !error && filteredPRs.length === 0 && (
-        <div className="rounded-xl border border-border bg-bg-secondary p-10 text-center space-y-2">
+        <div className="rounded-xl border border-border bg-bg-secondary p-10 text-center space-y-3">
           <p className="text-base font-medium text-text-primary">No Pull Request Reviews Found</p>
           <p className="text-sm text-text-secondary max-w-lg mx-auto">
-            {prs.length === 0
+            {!hasActiveFilters
               ? "Once your GitHub App sends a pull_request webhook (opened, synchronize, or reopened) to POST /webhook, PRSentry's AI review will appear here automatically."
               : "No pull requests match your active search or filter criteria."}
           </p>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={handleClearFilters}
+              className="rounded-lg border border-border bg-bg-tertiary px-3.5 py-1.5 text-xs font-medium text-accent hover:bg-bg-primary transition-colors cursor-pointer"
+            >
+              Clear All Filters
+            </button>
+          )}
         </div>
       )}
 

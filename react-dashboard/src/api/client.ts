@@ -11,6 +11,10 @@ const RAW_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "/
 const API_BASE = RAW_BASE.replace(/\/+$/, "");
 const API_KEY = (import.meta.env.VITE_DASHBOARD_API_KEY as string | undefined)?.trim();
 
+const HEALTH_URL = RAW_BASE.startsWith("http")
+  ? `${new URL(RAW_BASE).origin}/health`
+  : "/health";
+
 async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -39,6 +43,15 @@ async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
   }
 
   return (await response.json()) as T;
+}
+
+export async function checkApiHealth(signal?: AbortSignal): Promise<boolean> {
+  try {
+    const response = await fetch(HEALTH_URL, { method: "GET", signal });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 export function fetchPRs(filters: PRListFilters = {}, signal?: AbortSignal): Promise<PRSummary[]> {

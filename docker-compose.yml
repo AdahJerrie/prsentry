@@ -1,21 +1,23 @@
-
 services:
-  # 1. Local PostgreSQL Database
+  # 1. PostgreSQL Database
   postgres:
     image: postgres:16-alpine
     container_name: prsentry-postgres
-    restart: always
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: prsentry
-      POSTGRES_PASSWORD: secret
-      POSTGRES_DB: prsentry_dev
+      POSTGRES_USER: ${POSTGRES_USER:-prsentry}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-prsentry_dev}
     ports:
       - "5432:5432"
     volumes:
-      # Persists database data across container restarts
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U prsentry -d prsentry_dev"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER:-prsentry} -d $${POSTGRES_DB:-prsentry_dev}",
+        ]
       interval: 3s
       timeout: 5s
       retries: 5
@@ -25,13 +27,82 @@ services:
     image: migrate/migrate
     container_name: prsentry-migrations
     volumes:
-      - ./go-service/migrations:/migrations
+      - ./go-service/migrations:/migrations:ro
     command:
       - -path=/migrations
-      - -database=postgres://prsentry:secret@postgres:5432/prsentry_dev?sslmode=disable
+      - -database=postgres://${POSTGRES_USER:-prsentry}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-prsentry_dev}?sslmode=disable
       - up
     depends_on:
       postgres:
+        condition: service_healthy
+
+  # 3. Internal Python AI Diff Analysis Service (never exposed publicly in prod)
+  python-service:
+    build:
+      context: ./python-service
+    container_name: prsentry-python
+    restart: unless-stopped
+    environment:
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:?Set INTERNAL_AUTH_TOKEN in .env}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?Set ANTHROPIC_API_KEY in .env}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 4. Go Webhook, Storage & Dashboard API Server
+  go-service:
+    build:
+      context: ./go-service
+    container_name: prsentry-go
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      PORT: "8080"
+      DATABASE_URL: postgres://${POSTGRES_USER:-prsentry}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-prsentry_dev}?sslmode=disable
+      PYTHON_SERVICE_URL: http://python-service:8000
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:?Set INTERNAL_AUTH_TOKEN in .env}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:?Set GITHUB_WEBHOOK_SECRET in .env}
+      GITHUB_APP_ID: ${GITHUB_APP_ID:?Set GITHUB_APP_ID in .env}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+      GITHUB_APP_PRIVATE_KEY_PATH: ${GITHUB_APP_PRIVATE_KEY_PATH:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000}
+      DASHBOARD_API_KEY: ${DASHBOARD_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+      python-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 5. React Frontend Dashboard (served via Nginx on :3000, proxying /api -> go-service:8080)
+  react-dashboard:
+    build:
+      context: ./react-dashboard
+      args:
+        VITE_API_BASE_URL: /api/v1
+    container_name: prsentry-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      go-service:
         condition: service_healthy
 
 volumes:

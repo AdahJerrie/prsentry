@@ -8,6 +8,19 @@ export type Category = "bug" | "security" | "performance" | "style" | "maintaina
 export type MergeRecommendation = "safe" | "caution" | "block";
 export type PRStatus = "open" | "closed" | "merged";
 export type ReviewStatus = "pending" | "processing" | "completed" | "failed";
+export type PRListFilterStatus = PRStatus | ReviewStatus;
+export type BadgeVariant =
+  | MergeRecommendation
+  | Severity
+  | PRStatus
+  | ReviewStatus
+  | Category;
+
+export const RECOMMENDATION_LABELS: Record<MergeRecommendation, string> = {
+  safe: "Safe to Merge",
+  caution: "Merge with Caution",
+  block: "Block Merge",
+};
 
 export interface PRFinding {
   id: number;
@@ -79,16 +92,16 @@ export interface DashboardStats {
   total_reviews: number;
   average_risk_score: number;
   total_findings: number;
-  recommendations: Record<MergeRecommendation | string, number>;
-  severities: Record<Severity | string, number>;
-  categories: Record<Category | string, number>;
+  recommendations: Partial<Record<MergeRecommendation, number>>;
+  severities: Partial<Record<Severity, number>>;
+  categories: Partial<Record<Category, number>>;
   repositories: string[];
   recent_reviews: DailyReviewStat[];
 }
 
 export interface PRListFilters {
   repo?: string;
-  status?: string;
-  recommendation?: string;
+  status?: PRListFilterStatus;
+  recommendation?: MergeRecommendation;
   limit?: number;
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -36,13 +37,12 @@ func main() {
 		log.Fatal("GITHUB_APP_ID is not set")
 	}
 
-	keyPath := os.Getenv("GITHUB_APP_PRIVATE_KEY_PATH")
-	if keyPath == "" {
-		log.Fatal("GITHUB_APP_PRIVATE_KEY_PATH is not set")
-	}
-	privateKeyPEM, err := os.ReadFile(keyPath)
+	privateKeyPEM, err := loadGitHubPrivateKey(
+		os.Getenv("GITHUB_APP_PRIVATE_KEY"),
+		os.Getenv("GITHUB_APP_PRIVATE_KEY_PATH"),
+	)
 	if err != nil {
-		log.Fatalf("reading private key file: %v", err)
+		log.Fatalf("loading GitHub App private key: %v", err)
 	}
 
 	pythonServiceURL := os.Getenv("PYTHON_SERVICE_URL")
@@ -153,4 +153,18 @@ func main() {
 	if err := <-shutdownErr; err != nil {
 		log.Printf("Graceful shutdown error: %v\n", err)
 	}
+}
+
+func loadGitHubPrivateKey(inlinePEM, keyPath string) ([]byte, error) {
+	if trimmed := strings.TrimSpace(inlinePEM); trimmed != "" {
+		return []byte(strings.ReplaceAll(trimmed, `\n`, "\n")), nil
+	}
+	if trimmedPath := strings.TrimSpace(keyPath); trimmedPath != "" {
+		data, err := os.ReadFile(trimmedPath)
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", trimmedPath, err)
+		}
+		return data, nil
+	}
+	return nil, errors.New("neither GITHUB_APP_PRIVATE_KEY nor GITHUB_APP_PRIVATE_KEY_PATH is set")
 }

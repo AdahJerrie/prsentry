@@ -24,7 +24,7 @@ class ReviewRequest(BaseModel):
     """What Go POSTs to /review."""
 
     pr_id: int = Field(gt=0)
-    repo: str = Field(min_length=3, max_length=255)
+    repo: str = Field(min_length=3, max_length=255, pattern=r"^[^/\s]+/[^/\s]+$")
     files: list[FileDiff] = Field(default_factory=list, max_length=50)
 
 
