@@ -2,11 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { fetchPRDetail, fetchReviewDetail } from "../api/client";
 import Badge from "../components/Badge";
+import FindingInspectorCard from "../components/FindingInspectorCard";
 import RiskMeter from "../components/RiskMeter";
+import { useAuth } from "../context/AuthContext";
+import { SEED_PR_DETAILS } from "../data/institutionalSeeds";
 import type { PRDetail, PRFinding } from "../types/api";
 
 export default function ReviewDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { userSimulatedPRs } = useAuth();
+
   const [pr, setPr] = useState<PRDetail | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string>("");
   const [activeFindings, setActiveFindings] = useState<PRFinding[]>([]);
@@ -24,6 +29,25 @@ export default function ReviewDetailPage() {
 
   useEffect(() => {
     if (!id) return;
+
+    // Check simulated PRs and institutional seed PRs first
+    const localMatch =
+      userSimulatedPRs.find((item) => item.id === id) ??
+      SEED_PR_DETAILS.find((item) => item.id === id);
+
+    if (localMatch) {
+      setPr(localMatch);
+      setSelectedRunId(localMatch.latest_review_id);
+      setActiveFindings(localMatch.findings);
+      setActiveSummary(localMatch.summary);
+      setActiveRisk(localMatch.risk_score);
+      setActiveRec(localMatch.merge_recommendation);
+      setActiveSha(localMatch.head_sha);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     const controller = new AbortController();
     setLoading(true);
     setError(null);
@@ -45,7 +69,7 @@ export default function ReviewDetailPage() {
       .finally(() => setLoading(false));
 
     return () => controller.abort();
-  }, [id]);
+  }, [id, userSimulatedPRs]);
 
   async function handleSelectRun(runId: string) {
     if (!pr || runId === selectedRunId) return;
@@ -60,6 +84,7 @@ export default function ReviewDetailPage() {
       return;
     }
 
+    const localRun = pr.review_runs.find((r) => r.id === runId);
     setSwitchingRun(true);
     try {
       const reviewRun = await fetchReviewDetail(runId);
@@ -68,8 +93,13 @@ export default function ReviewDetailPage() {
       setActiveRisk(reviewRun.risk_score);
       setActiveRec(reviewRun.merge_recommendation);
       setActiveSha(reviewRun.head_sha);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load historical review run");
+    } catch {
+      if (localRun) {
+        setActiveSummary(localRun.summary);
+        setActiveRisk(localRun.risk_score);
+        setActiveRec(localRun.merge_recommendation);
+        setActiveSha(localRun.head_sha);
+      }
     } finally {
       setSwitchingRun(false);
     }
@@ -86,9 +116,9 @@ export default function ReviewDetailPage() {
   if (loading) {
     return (
       <div className="space-y-4">
-        <div className="h-8 w-48 animate-pulse rounded bg-bg-secondary" />
-        <div className="h-40 animate-pulse rounded-xl border border-border bg-bg-secondary" />
-        <div className="h-64 animate-pulse rounded-xl border border-border bg-bg-secondary" />
+        <div className="h-8 w-48 animate-pulse rounded bg-[#141820]" />
+        <div className="h-40 animate-pulse rounded-lg studio-panel" />
+        <div className="h-64 animate-pulse rounded-lg studio-panel" />
       </div>
     );
   }
@@ -96,10 +126,10 @@ export default function ReviewDetailPage() {
   if (error || !pr) {
     return (
       <div className="space-y-4">
-        <Link to="/" className="text-sm text-accent hover:underline">
-          ← Back to Pull Requests
+        <Link to="/dashboard" className="font-mono text-xs text-[#7C8AFF] hover:underline">
+          ← Back to PR Workspace
         </Link>
-        <div className="rounded-xl border border-danger/40 bg-danger/10 p-6 text-sm text-danger">
+        <div className="rounded-lg border border-[#F87171]/40 bg-[#F87171]/10 p-6 font-mono text-xs text-[#F87171]">
           {error ?? "Pull request not found."}
         </div>
       </div>
@@ -108,13 +138,16 @@ export default function ReviewDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <Link to="/" className="text-sm text-text-secondary hover:text-accent transition-colors">
-          ← Back to Pull Requests
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Link
+          to="/dashboard"
+          className="font-mono text-xs text-text-secondary hover:text-[#7C8AFF] transition-colors"
+        >
+          ← Back to PR Workspace
         </Link>
 
         {pr.review_runs.length > 1 && (
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-2 font-mono text-xs">
             <label htmlFor="run-select" className="text-text-muted">
               Review Run History ({pr.review_runs.length}):
             </label>
@@ -122,7 +155,7 @@ export default function ReviewDetailPage() {
               id="run-select"
               value={selectedRunId}
               onChange={(e) => void handleSelectRun(e.target.value)}
-              className="rounded-lg border border-border bg-bg-secondary px-2.5 py-1.5 text-xs font-mono text-text-primary"
+              className="rounded border border-white/[0.1] bg-[#141820] px-2.5 py-1.5 font-mono text-xs text-text-primary"
             >
               {pr.review_runs.map((run, idx) => (
                 <option key={run.id} value={run.id}>
@@ -137,42 +170,42 @@ export default function ReviewDetailPage() {
       </div>
 
       {/* PR Header & Verdict Card */}
-      <section className="rounded-xl border border-border bg-bg-secondary p-6 space-y-4">
+      <section className="studio-panel rounded-lg p-6 space-y-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
-              <span className="font-mono font-semibold text-accent">{pr.repo_full_name}</span>
+            <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-text-secondary">
+              <span className="font-semibold text-[#7C8AFF]">{pr.repo_full_name}</span>
               <span>•</span>
-              <span className="font-mono">PR #{pr.pr_number}</span>
+              <span>PR #{pr.pr_number}</span>
               <Badge variant={pr.pr_status}>{pr.pr_status}</Badge>
               {activeSha && (
-                <span className="rounded bg-bg-tertiary px-2 py-0.5 font-mono text-text-muted border border-border">
+                <span className="rounded bg-[#0E1116] px-2 py-0.5 font-mono text-text-muted border border-white/[0.08]">
                   {activeSha.slice(0, 12)}
                 </span>
               )}
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-text-primary">
+            <h1 className="font-mono text-xl sm:text-2xl font-bold text-text-primary">
               {pr.title || `Pull Request #${pr.pr_number}`}
             </h1>
-            <p className="text-xs text-text-muted">
-              Opened by <span className="text-text-secondary font-medium">{pr.author}</span> •{" "}
+            <p className="font-mono text-xs text-text-muted">
+              Opened by <span className="text-text-secondary font-medium">@{pr.author}</span> •{" "}
               {new Date(pr.created_at).toLocaleString()}
             </p>
           </div>
 
           <div className="flex flex-col items-start sm:items-end gap-2 shrink-0">
-            <Badge variant={activeRec} className="text-sm px-3 py-1">
+            <Badge variant={activeRec} className="text-xs px-3 py-1">
               Recommendation: {activeRec.toUpperCase()}
             </Badge>
             <RiskMeter score={activeRisk} />
           </div>
         </div>
 
-        <div className="rounded-lg border border-border bg-bg-primary/70 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
+        <div className="rounded-md border border-white/[0.08] bg-[#0E1116] p-4">
+          <p className="font-mono text-[11px] font-semibold uppercase tracking-wider text-text-muted mb-1.5">
             AI Executive Summary
           </p>
-          <p className="text-sm text-text-primary leading-relaxed">
+          <p className="text-[15px] leading-[1.75] text-text-primary">
             {switchingRun ? "Loading selected review run..." : activeSummary}
           </p>
         </div>
@@ -181,17 +214,17 @@ export default function ReviewDetailPage() {
       {/* Findings Section */}
       <section className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg font-semibold">
+          <h2 className="font-mono text-base font-semibold">
             Line-Level Findings ({visibleFindings.length}
             {visibleFindings.length !== activeFindings.length ? ` of ${activeFindings.length}` : ""})
           </h2>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
             <select
               value={severityFilter}
               onChange={(e) => setSeverityFilter(e.target.value)}
               aria-label="Filter findings by severity"
-              className="rounded-lg border border-border bg-bg-secondary px-3 py-1.5 text-xs text-text-primary"
+              className="rounded border border-white/[0.1] bg-[#141820] px-3 py-1.5 text-xs text-text-primary"
             >
               <option value="">All Severities</option>
               <option value="high">High</option>
@@ -203,7 +236,7 @@ export default function ReviewDetailPage() {
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
               aria-label="Filter findings by category"
-              className="rounded-lg border border-border bg-bg-secondary px-3 py-1.5 text-xs text-text-primary"
+              className="rounded border border-white/[0.1] bg-[#141820] px-3 py-1.5 text-xs text-text-primary"
             >
               <option value="">All Categories</option>
               <option value="security">Security</option>
@@ -216,7 +249,7 @@ export default function ReviewDetailPage() {
         </div>
 
         {visibleFindings.length === 0 ? (
-          <div className="rounded-xl border border-border bg-bg-secondary p-8 text-center text-sm text-text-secondary">
+          <div className="studio-panel rounded-lg p-8 text-center font-mono text-xs text-text-secondary">
             {activeFindings.length === 0
               ? "No issues were flagged in this review run."
               : "No findings match the selected severity/category filters."}
@@ -224,21 +257,13 @@ export default function ReviewDetailPage() {
         ) : (
           <div className="space-y-3">
             {visibleFindings.map((finding) => (
-              <div
+              <FindingInspectorCard
                 key={finding.id}
-                className="rounded-xl border border-border bg-bg-secondary p-4 sm:p-5 space-y-2.5"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={finding.severity}>{finding.severity.toUpperCase()}</Badge>
-                    <Badge variant={finding.category}>{finding.category}</Badge>
-                  </div>
-                  <span className="rounded-md bg-bg-primary px-2.5 py-1 font-mono text-xs text-accent border border-border">
-                    {finding.file_path}:{finding.line_number}
-                  </span>
-                </div>
-                <p className="text-sm text-text-primary leading-relaxed">{finding.message}</p>
-              </div>
+                finding={finding}
+                prId={pr.id}
+                repoFullName={pr.repo_full_name}
+                prNumber={pr.pr_number}
+              />
             ))}
           </div>
         )}

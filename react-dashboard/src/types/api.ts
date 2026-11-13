@@ -16,6 +16,24 @@ export interface PRFinding {
   severity: Severity;
   category: Category;
   message: string;
+  /** Optional client/educational enrichment for code diff preview & remediation */
+  code_snippet?: string;
+  suggested_fix?: string;
+}
+
+export interface FindingFeedbackRecord {
+  finding_id: number;
+  pr_id: string;
+  repo_full_name: string;
+  pr_number: number;
+  file_path: string;
+  line_number: number;
+  severity: Severity;
+  category: Category;
+  helpful: "up" | "down";
+  comment: string;
+  reviewer_username: string;
+  updated_at: string;
 }
 
 export interface PRSummary {
