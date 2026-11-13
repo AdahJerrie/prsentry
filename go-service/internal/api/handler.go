@@ -67,6 +67,23 @@ func (h *APIHandler) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+var (
+	validStatusFilters = map[string]struct{}{
+		"open":       {},
+		"closed":     {},
+		"merged":     {},
+		"pending":    {},
+		"processing": {},
+		"completed":  {},
+		"failed":     {},
+	}
+	validRecommendationFilters = map[string]struct{}{
+		"safe":    {},
+		"caution": {},
+		"block":   {},
+	}
+)
+
 // ListPRsHandler handles GET /api/v1/prs?repo=&status=&recommendation=&limit=
 func (h *APIHandler) ListPRsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -85,10 +102,32 @@ func (h *APIHandler) ListPRsHandler(w http.ResponseWriter, r *http.Request) {
 		limit = parsed
 	}
 
+	repo := strings.TrimSpace(q.Get("repo"))
+	if len(repo) > 255 {
+		writeError(w, http.StatusBadRequest, "repo filter exceeds maximum length")
+		return
+	}
+
+	status := strings.ToLower(strings.TrimSpace(q.Get("status")))
+	if status != "" {
+		if _, ok := validStatusFilters[status]; !ok {
+			writeError(w, http.StatusBadRequest, "invalid status filter")
+			return
+		}
+	}
+
+	recommendation := strings.ToLower(strings.TrimSpace(q.Get("recommendation")))
+	if recommendation != "" {
+		if _, ok := validRecommendationFilters[recommendation]; !ok {
+			writeError(w, http.StatusBadRequest, "invalid recommendation filter")
+			return
+		}
+	}
+
 	prs, err := h.store.ListPRs(r.Context(), db.ListPRsFilter{
-		Repo:           q.Get("repo"),
-		Status:         q.Get("status"),
-		Recommendation: q.Get("recommendation"),
+		Repo:           repo,
+		Status:         status,
+		Recommendation: recommendation,
 		Limit:          limit,
 	})
 	if err != nil {
