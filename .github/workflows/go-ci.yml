@@ -1,0 +1,61 @@
+name: Go Service CI
+
+on:
+  push:
+    branches: [main, go-service]
+    paths:
+      - "go-service/**"
+      - ".github/workflows/go-ci.yml"
+  pull_request:
+    paths:
+      - "go-service/**"
+      - ".github/workflows/go-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Vet & Test (Go + PostgreSQL 16)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: prsentry
+          POSTGRES_PASSWORD: secret
+          POSTGRES_DB: prsentry_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U prsentry -d prsentry_dev"
+          --health-interval=3s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go-service/go.mod
+          cache-dependency-path: go-service/go.sum
+
+      - name: Apply PostgreSQL migrations
+        run: |
+          for migration in go-service/migrations/*.up.sql; do
+            PGPASSWORD=secret psql -h 127.0.0.1 -U prsentry -d prsentry_dev -v ON_ERROR_STOP=1 -f "$migration"
+          done
+
+      - name: Run go vet
+        working-directory: go-service
+        run: go vet ./...
+
+      - name: Run unit & database integration tests
+        working-directory: go-service
+        env:
+          TEST_DATABASE_URL: postgres://prsentry:secret@127.0.0.1:5432/prsentry_dev?sslmode=disable
+        run: go test -race -v ./...
