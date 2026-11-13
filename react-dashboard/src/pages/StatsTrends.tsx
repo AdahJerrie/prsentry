@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { fetchDashboardStats } from "../api/client";
 import Badge from "../components/Badge";
 import type { Category, DashboardStats } from "../types/api";
@@ -102,7 +103,10 @@ export default function StatsTrends() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto min-h-screen max-w-6xl space-y-6 px-4 py-6">
+      <Link to="/" className="text-xs text-accent">
+        Back to reviews
+      </Link>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Analytics &amp; Review Trends</h1>
