@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/api/client.ts","./src/components/Badge.tsx","./src/components/ExpandablePRCard.tsx","./src/components/Layout.tsx","./src/components/RiskMeter.tsx","./src/pages/PRList.tsx","./src/pages/ReviewDetail.tsx","./src/pages/StatsTrends.tsx","./src/types/api.ts"],"version":"5.9.3"}
