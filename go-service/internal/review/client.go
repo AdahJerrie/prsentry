@@ -2,40 +2,36 @@ package review
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
-// Client talks to the Python review service. Built once and reused across
-// requests — same reasoning as github.Client, same as Python's module-level
-// anthropic.Anthropic() instance.
+const maxReviewResponseBytes = 5 * 1024 * 1024 // 5 MB upper bound
+
+// Client talks to the Python review service. Built once and reused across requests.
 type Client struct {
 	baseURL    string
 	authToken  string
 	httpClient *http.Client
 }
 
-// NewClient builds a review.Client pointed at the Python service's base URL
-// (e.g. "http://localhost:8000"). // go-service: internal/review/client.go
-
 func NewClient(baseURL string, authToken string) *Client {
 	return &Client{
-		baseURL:   baseURL,
-		authToken: authToken, // Ensure this is set to the same token used in the Python service for internal auth
+		baseURL:   strings.TrimRight(strings.TrimSpace(baseURL), "/"),
+		authToken: authToken,
 		httpClient: &http.Client{
-			Timeout: 60 * time.Second, // Elevated to handle multi-file AI evaluation latency
+			Timeout: 60 * time.Second,
 		},
 	}
 }
 
-// SubmitForReview sends a PR's changed files alongside the target repo details to Python's POST /review and
-// returns the parsed risk assessment. Every failure point is wrapped with
-// context about which step failed, so a caller's log line says WHERE
-// things broke, not just that something did.
-func (c *Client) SubmitForReview(prID int, repo string, files []FileDiff) (*ReviewResponse, error) {
+// SubmitForReview sends a PR's changed files alongside the target repo details to Python's POST /review.
+func (c *Client) SubmitForReview(ctx context.Context, prID int, repo string, files []FileDiff) (*ReviewResponse, error) {
 	reqBody := ReviewRequest{
 		PRID:  prID,
 		Repo:  repo,
@@ -47,7 +43,8 @@ func (c *Client) SubmitForReview(prID int, repo string, files []FileDiff) (*Revi
 		return nil, fmt.Errorf("failed to encode review request: %w", err)
 	}
 
-	req, err := http.NewRequest(
+	req, err := http.NewRequestWithContext(
+		ctx,
 		http.MethodPost,
 		c.baseURL+"/review",
 		bytes.NewReader(jsonBytes),
@@ -57,7 +54,6 @@ func (c *Client) SubmitForReview(prID int, repo string, files []FileDiff) (*Revi
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	// Set the internal auth token header for secure communication with the Python service
 	if c.authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+c.authToken)
 	}
@@ -68,7 +64,7 @@ func (c *Client) SubmitForReview(prID int, repo string, files []FileDiff) (*Revi
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, maxReviewResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read review response body: %w", err)
 	}

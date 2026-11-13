@@ -1,70 +1,66 @@
 """
-Entry point. This is what Go's webhook handler will POST to once
-the forwarding step is wired up on the Go side (Week 2 work).
+FastAPI entry point for the PRSentry Python AI analysis service.
 
 Run locally with:
     uvicorn app.main:app --reload --port 8000
 """
+
+import logging
 import os
-from importlib import import_module
+import secrets
 
-_fastapi = import_module("fastapi")
-FastAPI = _fastapi.FastAPI
-HTTPException = _fastapi.HTTPException
-Depends = _fastapi.Depends
-Header = _fastapi.Header
+from fastapi import Depends, FastAPI, Header, HTTPException
 
-# Import the updated asynchronous execution engine from your analysis layer
 from app.analysis import analyze_pr_async
 from app.models import ReviewRequest, ReviewResponse
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="PRSentry Python Service")
 
-INTERNAL_AUTH_TOKEN = os.getenv("INTERNAL_AUTH_TOKEN")
 
-async def verify_internal_token(authorization: str = Header(None)):
-    if not INTERNAL_AUTH_TOKEN:
+async def verify_internal_token(authorization: str | None = Header(default=None)) -> None:
+    expected_token = os.getenv("INTERNAL_AUTH_TOKEN", "").strip()
+    if not expected_token:
         raise HTTPException(
-            status_code=500, 
-            detail="INTERNAL_AUTH_TOKEN is not configured on the server."
+            status_code=500,
+            detail="INTERNAL_AUTH_TOKEN is not configured on the server.",
         )
-    
-    expected_header = f"Bearer {INTERNAL_AUTH_TOKEN}"
-    if not authorization or authorization != expected_header:
+
+    expected_header = f"Bearer {expected_token}"
+    provided = authorization or ""
+    if not secrets.compare_digest(provided.encode("utf-8"), expected_header.encode("utf-8")):
         raise HTTPException(
-            status_code=401, 
-            detail="Unauthorized: Invalid or missing internal auth token."
+            status_code=401,
+            detail="Unauthorized: Invalid or missing internal auth token.",
         )
+
 
 @app.get("/health")
-def health():
-    """Simple liveness check — handy for confirming the service is up
-    before Go ever tries to talk to it."""
+def health() -> dict[str, str]:
+    """Liveness check confirming the FastAPI service is reachable."""
     return {"status": "ok"}
 
 
 @app.post(
-    "/review", 
+    "/review",
     response_model=ReviewResponse,
-    dependencies=[Depends(verify_internal_token)]
+    dependencies=[Depends(verify_internal_token)],
 )
-async def review(request: ReviewRequest):
+async def review(request: ReviewRequest) -> ReviewResponse:
     """
-    Receives PR file diffs from the Go service, runs concurrent LLM-based 
-    finding and vulnerability analysis, and returns the aggregated 
-    v1 contract compliant payload.
+    Receives PR file diffs from the Go service, runs bounded concurrent LLM
+    analysis, and returns a contract-compliant ReviewResponse payload.
     """
     try:
-        # Pass the expanded contract parameters (pr_id, repo, files) to the async engine
-        response_payload = await analyze_pr_async(
+        return await analyze_pr_async(
             pr_id=request.pr_id,
             repo=request.repo,
-            files=request.files
+            files=request.files,
         )
-        return response_payload
-        
-    except Exception as exc:
-        # Anything from the Anthropic API (rate limit, network, auth)
-        # surfaces here. Bubble up as a 502 so Go knows THIS service
-        # failed, not that the request itself was malformed.
-        raise HTTPException(status_code=502, detail=f"Analysis failed: {exc}")
+    except Exception:
+        logger.exception("AI diff analysis failed for %s#%d", request.repo, request.pr_id)
+        raise HTTPException(
+            status_code=502,
+            detail="Upstream AI analysis failed while evaluating pull request diffs.",
+        )
