@@ -38,10 +38,11 @@ func (q *Queries) CreateFinding(ctx context.Context, arg CreateFindingParams) er
 }
 
 const createInstallation = `-- name: CreateInstallation :one
-
 INSERT INTO installations (id, account_name)
 VALUES ($1, $2)
-ON CONFLICT (id) DO UPDATE SET updated_at = NOW()
+ON CONFLICT (id) DO UPDATE
+SET account_name = EXCLUDED.account_name,
+    updated_at = NOW()
 RETURNING id, account_name, created_at, updated_at
 `
 
@@ -50,8 +51,6 @@ type CreateInstallationParams struct {
 	AccountName string
 }
 
-// The -- name: FunctionName :one comment is the magic of sqlc. It tells the compiler to generate a Go function named CreateReviewRun that returns exactly :one row.
-// Instead of writing Go code to insert data, I am writing annotated SQL.
 func (q *Queries) CreateInstallation(ctx context.Context, arg CreateInstallationParams) (Installation, error) {
 	row := q.db.QueryRow(ctx, createInstallation, arg.ID, arg.AccountName)
 	var i Installation
@@ -64,10 +63,49 @@ func (q *Queries) CreateInstallation(ctx context.Context, arg CreateInstallation
 	return i, err
 }
 
+const createRepository = `-- name: CreateRepository :one
+INSERT INTO repositories (installation_id, github_repo_id, full_name)
+VALUES ($1, $2, $3)
+ON CONFLICT (github_repo_id) DO UPDATE
+SET installation_id = EXCLUDED.installation_id,
+    full_name = EXCLUDED.full_name,
+    updated_at = NOW()
+RETURNING id, installation_id, github_repo_id, full_name, is_active, created_at, updated_at
+`
+
+type CreateRepositoryParams struct {
+	InstallationID int64
+	GithubRepoID   int64
+	FullName       string
+}
+
+func (q *Queries) CreateRepository(ctx context.Context, arg CreateRepositoryParams) (Repository, error) {
+	row := q.db.QueryRow(ctx, createRepository,
+		arg.InstallationID,
+		arg.GithubRepoID,
+		arg.FullName,
+	)
+	var i Repository
+	err := row.Scan(
+		&i.ID,
+		&i.InstallationID,
+		&i.GithubRepoID,
+		&i.FullName,
+		&i.IsActive,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createPullRequest = `-- name: CreatePullRequest :one
-INSERT INTO pull_requests (repository_id, pr_number, title, author)
-VALUES ($1, $2, $3, $4)
-ON CONFLICT (repository_id, pr_number) DO UPDATE SET updated_at = NOW()
+INSERT INTO pull_requests (repository_id, pr_number, title, author, status)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (repository_id, pr_number) DO UPDATE
+SET title = EXCLUDED.title,
+    author = EXCLUDED.author,
+    status = EXCLUDED.status,
+    updated_at = NOW()
 RETURNING id, repository_id, pr_number, title, author, status, created_at, updated_at
 `
 
@@ -76,6 +114,7 @@ type CreatePullRequestParams struct {
 	PrNumber     int32
 	Title        pgtype.Text
 	Author       pgtype.Text
+	Status       string
 }
 
 func (q *Queries) CreatePullRequest(ctx context.Context, arg CreatePullRequestParams) (PullRequest, error) {
@@ -84,6 +123,7 @@ func (q *Queries) CreatePullRequest(ctx context.Context, arg CreatePullRequestPa
 		arg.PrNumber,
 		arg.Title,
 		arg.Author,
+		arg.Status,
 	)
 	var i PullRequest
 	err := row.Scan(
@@ -100,14 +140,15 @@ func (q *Queries) CreatePullRequest(ctx context.Context, arg CreatePullRequestPa
 }
 
 const createReviewRun = `-- name: CreateReviewRun :one
-INSERT INTO review_runs (pull_request_id, commit_sha, summary, risk_score, merge_recommendation)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO review_runs (pull_request_id, commit_sha, status, summary, risk_score, merge_recommendation)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, pull_request_id, commit_sha, status, summary, risk_score, merge_recommendation, created_at
 `
 
 type CreateReviewRunParams struct {
 	PullRequestID       pgtype.UUID
 	CommitSha           pgtype.Text
+	Status              string
 	Summary             string
 	RiskScore           pgtype.Numeric
 	MergeRecommendation string
@@ -117,6 +158,7 @@ func (q *Queries) CreateReviewRun(ctx context.Context, arg CreateReviewRunParams
 	row := q.db.QueryRow(ctx, createReviewRun,
 		arg.PullRequestID,
 		arg.CommitSha,
+		arg.Status,
 		arg.Summary,
 		arg.RiskScore,
 		arg.MergeRecommendation,

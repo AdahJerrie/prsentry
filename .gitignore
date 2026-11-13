@@ -12,6 +12,8 @@ go-service/bin/
 
 # Python
 python-service/__pycache__/
+python-service/**/__pycache__/
+python-service/.pytest_cache/
 python-service/*.pyc
 python-service/.venv/
 python-service/venv/
@@ -20,6 +22,7 @@ python-service/venv/
 react-dashboard/node_modules/
 react-dashboard/dist/
 react-dashboard/build/
+*.tsbuildinfo
 
 # OS/editor junk
 .DS_Store

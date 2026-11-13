@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,7 +23,7 @@ import (
 
 func main() {
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, relying on real environment variables")
+		log.Println("No .env file found, relying on environment variables")
 	}
 
 	secret := os.Getenv("GITHUB_WEBHOOK_SECRET")
@@ -47,7 +50,6 @@ func main() {
 		log.Fatal("PYTHON_SERVICE_URL is not set")
 	}
 
-	// 1. Add the environment check for the internal auth token
 	internalAuthToken := os.Getenv("INTERNAL_AUTH_TOKEN")
 	if internalAuthToken == "" {
 		log.Fatal("INTERNAL_AUTH_TOKEN is not set")
@@ -58,30 +60,36 @@ func main() {
 		log.Fatal("DATABASE_URL is not set")
 	}
 
-	// ADD THIS GUARDRAIL: Enforce SSL in production environments
-	envMode := os.Getenv("ENVIRONMENT")
-	if envMode == "production" {
-		if strings.Contains(dbURL, "sslmode=disable") {
-			log.Fatal("SECURITY ERROR: DATABASE_URL contains sslmode=disable while ENVIRONMENT=production. Refusing to start in plain-text mode.")
-		}
-	}
+	envMode := strings.ToLower(strings.TrimSpace(os.Getenv("ENVIRONMENT")))
 
-	// Configure pool settings to prevent DB connection exhaustion
 	poolConfig, err := pgxpool.ParseConfig(dbURL)
 	if err != nil {
 		log.Fatalf("Unable to parse DB config: %v", err)
 	}
+
+	if envMode == "production" {
+		if strings.Contains(dbURL, "sslmode=disable") || poolConfig.ConnConfig.TLSConfig == nil {
+			log.Fatal("SECURITY ERROR: DATABASE_URL must enforce TLS (e.g. sslmode=require) when ENVIRONMENT=production.")
+		}
+	}
+
 	poolConfig.MaxConns = 25
-	poolConfig.MinConns = 5
+	poolConfig.MinConns = 2
 	poolConfig.MaxConnIdleTime = 5 * time.Minute
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
 	if err != nil {
-		log.Fatalf("Unable to connect to database: %v", err)
+		log.Fatalf("Unable to create database pool: %v", err)
 	}
 	defer pool.Close()
 
-	// Instantiate the Store wrapper for ACID transaction management
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := pool.Ping(pingCtx); err != nil {
+		pingCancel()
+		log.Fatalf("Unable to reach PostgreSQL database: %v", err)
+	}
+	pingCancel()
+
 	store := db.NewStore(pool)
 
 	ghClient, err := github.NewClient(appID, privateKeyPEM)
@@ -92,19 +100,57 @@ func main() {
 	reviewClient := review.NewClient(pythonServiceURL, internalAuthToken)
 
 	mux := http.NewServeMux()
-
-	// Instantiate API Handler
-	apiHandler := api.NewAPIHandler(store)
-
-	// Register Webhook Router
 	mux.HandleFunc("/webhook", webhook.NewHandler(secret, ghClient, reviewClient, store))
 
-	// Register Read API Endpoints for Dashboard
-	mux.HandleFunc("/api/v1/prs", apiHandler.ListPRsHandler)
-	mux.HandleFunc("/api/v1/prs/", apiHandler.GetPRFindingsHandler) // Matches /api/v1/prs/{id}/findings
+	apiHandler := api.NewAPIHandler(store)
+	apiHandler.RegisterRoutes(mux)
 
-	log.Println("Server listening on :8080")
-	if err := http.ListenAndServe(":8080", mux); err != nil {
+	rawOrigins := os.Getenv("ALLOWED_ORIGINS")
+	if rawOrigins == "" && envMode != "production" {
+		rawOrigins = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000"
+	}
+	var allowedOrigins []string
+	if rawOrigins != "" {
+		allowedOrigins = strings.Split(rawOrigins, ",")
+	}
+
+	securedHandler := api.WrapWithSecurity(mux, api.SecurityMiddlewareConfig{
+		AllowedOrigins:  allowedOrigins,
+		DashboardAPIKey: os.Getenv("DASHBOARD_API_KEY"),
+		RequestsPerMin:  120,
+	})
+
+	port := strings.TrimSpace(os.Getenv("PORT"))
+	if port == "" {
+		port = "8080"
+	}
+
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           securedHandler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
+
+	shutdownErr := make(chan error, 1)
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		<-sigCh
+		log.Println("Shutting down server gracefully...")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		shutdownErr <- srv.Shutdown(ctx)
+	}()
+
+	log.Printf("PRSentry Go server listening on :%s\n", port)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
+	}
+	if err := <-shutdownErr; err != nil {
+		log.Printf("Graceful shutdown error: %v\n", err)
 	}
 }
