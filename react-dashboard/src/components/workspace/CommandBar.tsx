@@ -1,5 +1,7 @@
 import { Download, Radio, Search } from "lucide-react";
 import type { FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 
 interface CommandBarProps {
   repos: string[];
@@ -24,8 +26,16 @@ export default function CommandBar({
   onExport,
   exportDisabled,
 }: CommandBarProps) {
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
+  }
+
+  function handleLogout() {
+    logout();
+    navigate("/");
   }
 
   const apiLabel =
@@ -120,6 +130,13 @@ export default function CommandBar({
         />
         {apiLabel}
       </p>
+      <button
+        type="button"
+        onClick={handleLogout}
+        className="inline-flex h-9 items-center self-start rounded-lg border border-white/15 px-3 text-xs font-medium text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber lg:self-center"
+      >
+        Log out{user ? ` @${user.username}` : ""}
+      </button>
     </header>
   );
 }

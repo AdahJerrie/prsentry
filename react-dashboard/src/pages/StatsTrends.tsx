@@ -104,7 +104,7 @@ export default function StatsTrends() {
 
   return (
     <div className="mx-auto min-h-screen max-w-6xl space-y-6 px-4 py-6">
-      <Link to="/" className="text-xs text-accent">
+      <Link to="/dashboard" className="text-xs text-accent">
         Back to reviews
       </Link>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
