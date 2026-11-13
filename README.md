@@ -13,7 +13,7 @@ Manual code review is slow and inconsistent, especially on small teams without a
 | **React Dashboard** | `react-dashboard/` | React 19 + TypeScript + Vite + Tailwind CSS v4 dashboard displaying filterable PR reviews, expandable inline previews, historical review runs, and 14-day risk/category analytics. |
 | **PostgreSQL 16** | `go-service/migrations/` | Stores `installations`, `repositories`, `pull_requests`, `review_runs`, and `findings`. |
 
-Cross-service request and response schemas are locked in [`api-contract.md`](./api-contract.md). Engineering workflow rules live in [`AGENT.md`](./AGENT.md).
+Cross-service request and response schemas are locked in [`api-contract.md`](./api-contract.md). Engineering workflow rules live in [`AGENTS.md`](./AGENTS.md).
 
 ---
 
