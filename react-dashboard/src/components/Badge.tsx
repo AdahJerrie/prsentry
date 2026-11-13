@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
+import type { BadgeVariant } from "../types/api";
 
-const VARIANT_STYLES: Record<string, string> = {
+const VARIANT_STYLES: Record<BadgeVariant, string> = {
   // Merge recommendations
   safe: "bg-success/15 text-success border-success/35",
   caution: "bg-warning/15 text-warning border-warning/35",
@@ -29,14 +30,13 @@ const VARIANT_STYLES: Record<string, string> = {
 };
 
 interface BadgeProps {
-  variant: string;
+  variant: BadgeVariant;
   children: ReactNode;
   className?: string;
 }
 
 export default function Badge({ variant, children, className = "" }: BadgeProps) {
-  const key = variant.toLowerCase();
-  const styles = VARIANT_STYLES[key] ?? VARIANT_STYLES.pending;
+  const styles = VARIANT_STYLES[variant] ?? VARIANT_STYLES.pending;
 
   return (
     <span
