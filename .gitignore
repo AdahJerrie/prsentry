@@ -22,6 +22,7 @@ python-service/venv/
 react-dashboard/node_modules/
 react-dashboard/dist/
 react-dashboard/build/
+*.tsbuildinfo
 
 # OS/editor junk
 .DS_Store
