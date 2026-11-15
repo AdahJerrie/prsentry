@@ -1,30 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
-const DIFF_TOKENS = [
-  "+",
-  "-",
-  "@@",
-  "func",
-  "async",
-  "defer",
-  "ctx",
-  "SHA256",
-  "err != nil",
-  "SELECT $1",
-  "+return",
-  "-query",
-  "@@ -42,6",
-];
-
-interface ColumnStream {
-  x: number;
-  y: number;
-  speed: number;
-  tokenIndex: number;
-  opacity: number;
-  isAdd: boolean;
-  isRemove: boolean;
-}
+const GLYPHS = "01{}<>/\\$#*&+=;:".split("");
+const COLORS = ["255,178,36", "52,211,153", "124,138,255", "154,160,168"];
 
 interface FallingCodeCanvasProps {
   paused: boolean;
@@ -36,20 +13,24 @@ export default function FallingCodeCanvas({
   onTogglePause,
 }: FallingCodeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const pausedRef = useRef(paused);
   const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     setReducedMotion(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+    const handler = (event: MediaQueryListEvent) => setReducedMotion(event.matches);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, []);
 
-  // Keyboard listener for 'R' toggle when not typing in an input
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
       if (
         target &&
         (target.tagName === "INPUT" ||
@@ -59,8 +40,8 @@ export default function FallingCodeCanvas({
       ) {
         return;
       }
-      if (e.key === "r" || e.key === "R") {
-        e.preventDefault();
+      if (event.key === "r" || event.key === "R") {
+        event.preventDefault();
         onTogglePause();
       }
     };
@@ -70,94 +51,91 @@ export default function FallingCodeCanvas({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const parent = canvas?.parentElement;
+    if (!canvas || !parent) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let animationFrameId = 0;
-    let width = (canvas.width = canvas.parentElement?.clientWidth || window.innerWidth);
-    const height = (canvas.height = 620);
+    let width = 0;
+    let height = 0;
+    let drops: number[] = [];
+    let frame = 0;
+    let raf = 0;
 
-    const colSpacing = 76;
-    const numCols = Math.max(8, Math.floor(width / colSpacing));
-
-    const streams: ColumnStream[] = Array.from({ length: numCols }, (_, idx) => {
-      const tokenIdx = idx % DIFF_TOKENS.length;
-      const tok = DIFF_TOKENS[tokenIdx];
-      return {
-        x: idx * colSpacing + 24,
-        y: (idx * 97) % height,
-        speed: 0.28 + (idx % 4) * 0.11,
-        tokenIndex: tokenIdx,
-        opacity: 0.055 + (idx % 3) * 0.025,
-        isAdd: tok.startsWith("+"),
-        isRemove: tok.startsWith("-"),
-      };
-    });
-
-    const handleResize = () => {
-      if (!canvas) return;
-      width = canvas.width = canvas.parentElement?.clientWidth || window.innerWidth;
-      canvas.height = 620;
+    const resize = () => {
+      const rect = parent.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      width = rect.width;
+      height = rect.height;
+      canvas.width = Math.max(1, Math.floor(width * dpr));
+      canvas.height = Math.max(1, Math.floor(height * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.font = "14px ui-monospace, Menlo, monospace";
+      const cols = Math.max(1, Math.floor(width / 22));
+      drops = Array.from({ length: cols }, () => Math.random() * -40);
     };
-    window.addEventListener("resize", handleResize);
 
-    const renderFrame = () => {
-      ctx.clearRect(0, 0, width, height);
-      ctx.font = '500 11px "JetBrains Mono", monospace';
+    const fadeAt = (y: number) => {
+      const t = y / Math.max(height, 1);
+      return Math.max(0, 1 - t ** 1.4);
+    };
 
-      for (const s of streams) {
-        const token = DIFF_TOKENS[s.tokenIndex];
-        if (s.isAdd) {
-          ctx.fillStyle = `rgba(52, 211, 153, ${s.opacity})`;
-        } else if (s.isRemove) {
-          ctx.fillStyle = `rgba(248, 113, 113, ${s.opacity})`;
-        } else {
-          ctx.fillStyle = `rgba(154, 165, 180, ${s.opacity})`;
+    const tick = () => {
+      raf = window.requestAnimationFrame(tick);
+      if (pausedRef.current || reducedMotion) return;
+      frame += 1;
+      if (frame % 2) return;
+
+      ctx.fillStyle = "rgba(14,17,22,0.14)";
+      ctx.fillRect(0, 0, width, height);
+      ctx.font = "14px ui-monospace, Menlo, monospace";
+
+      for (let i = 0; i < drops.length; i += 1) {
+        const x = i * 22 + 8;
+        const y = drops[i] * 18;
+        const glyph = GLYPHS[(Math.random() * GLYPHS.length) | 0] ?? "0";
+        const color =
+          COLORS[((Math.random() * 10) | 0) % 4 === 0 ? (Math.random() * 3) | 0 : 3] ??
+          COLORS[3];
+        const alpha = (0.25 + Math.random() * 0.55) * fadeAt(y);
+        if (alpha <= 0.01) {
+          drops[i] = y > height ? Math.random() * -10 : drops[i] + 1;
+          continue;
         }
-
-        ctx.fillText(token, s.x, s.y);
-
-        if (!paused && !reducedMotion) {
-          s.y += s.speed;
-          if (s.y > height - 20) {
-            s.y = -16;
-            s.tokenIndex = (s.tokenIndex + 1) % DIFF_TOKENS.length;
-            const nextTok = DIFF_TOKENS[s.tokenIndex];
-            s.isAdd = nextTok.startsWith("+");
-            s.isRemove = nextTok.startsWith("-");
-          }
-        }
-      }
-
-      if (!paused && !reducedMotion) {
-        animationFrameId = window.requestAnimationFrame(renderFrame);
+        ctx.fillStyle = `rgba(${color},${Math.min(1, alpha + 0.25)})`;
+        ctx.fillText(glyph, x, y);
+        ctx.fillStyle = `rgba(${color},${alpha * 0.35})`;
+        ctx.fillText(GLYPHS[(Math.random() * GLYPHS.length) | 0] ?? "0", x, y - 18);
+        drops[i] += 1;
+        if (y > height + 20 && Math.random() > 0.975) drops[i] = 0;
       }
     };
 
-    renderFrame();
+    resize();
+    window.addEventListener("resize", resize);
+    raf = window.requestAnimationFrame(tick);
 
     return () => {
-      window.removeEventListener("resize", handleResize);
-      if (animationFrameId) {
-        window.cancelAnimationFrame(animationFrameId);
-      }
+      window.removeEventListener("resize", resize);
+      window.cancelAnimationFrame(raf);
     };
-  }, [paused, reducedMotion]);
+  }, [reducedMotion]);
+
+  useEffect(() => {
+    if (!paused) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }, [paused]);
 
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 top-0 h-[620px] overflow-hidden select-none"
+      className="pointer-events-none fixed inset-x-0 top-0 z-[1] h-[620px] select-none [mask-image:linear-gradient(to_bottom,#000_0%,#000_35%,transparent_92%)]"
       aria-hidden="true"
     >
-      <canvas ref={canvasRef} className="block h-[620px] w-full" />
-      {/* Smooth vertical fade into #0E1116 */}
-      <div
-        className="
-          absolute inset-0
-          bg-gradient-to-b from-transparent via-[#0E1116]/45 to-[#0E1116]
-        "
-      />
+      <canvas ref={canvasRef} className="block h-full w-full opacity-90" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent from-40% to-[#0E1116]" />
     </div>
   );
 }
