@@ -34,10 +34,18 @@ export default function LandingPage() {
               ◈
             </div>
             <div className="ml-2.5 hidden items-center gap-5 text-[13.5px] text-[#9AA0A8] sm:flex">
-              <span className="font-semibold text-[#EDEBE6]">Studio</span>
-              <span>Protocols</span>
-              <span>Systems</span>
-              <span>Archive</span>
+              <a href="#reviews" className="font-semibold text-[#EDEBE6]">
+                Reviews
+              </a>
+              <a href="#pipeline" className="hover:text-[#EDEBE6]">
+                Pipeline
+              </a>
+              <a href="#security" className="hover:text-[#EDEBE6]">
+                Security
+              </a>
+              <button type="button" onClick={handleEnterStudio} className="cursor-pointer hover:text-[#EDEBE6]">
+                Dashboard
+              </button>
             </div>
           </div>
           <div className="flex gap-3.5 font-mono text-[11px] tracking-[0.08em]">
@@ -54,20 +62,22 @@ export default function LandingPage() {
 
         <header className="px-0 pb-3 pt-[88px] text-center">
           <div className="inline-flex items-center gap-[9px] rounded-full border border-white/[0.09] bg-[rgba(20,24,31,0.7)] px-[15px] py-[7px] font-mono text-[11.5px] tracking-[0.12em] text-[#9AA0A8] backdrop-blur-[8px]">
-            <b className="font-bold text-[#FFB224]">01 / HARMONIZED</b>
-            SLATE · CARBON · DAYLIGHT — ONE CANVAS
+            <b className="font-bold text-[#FFB224]">01 / AUTOMATED REVIEW</b>
+            SECURITY · BUGS · PERFORMANCE
           </div>
           <h1 className="mb-3.5 mt-[22px] text-[36px] font-[750] leading-[1.03] tracking-[-0.032em] sm:text-[54px]">
-            Code falls.
+            Diffs arrive.
             <br />
             <span className="bg-gradient-to-b from-white from-20% via-[#FFB224] via-75% to-[#FF6B00] bg-clip-text text-transparent">
-              Clarity remains.
+              Risk stays visible.
             </span>
           </h1>
           <p className="mx-auto max-w-[600px] text-base leading-[1.75] text-[#9AA0A8]">
-            One warm-slate canvas — <strong className="font-semibold text-[#EDEBE6]">24px dots + grain + graph</strong>{" "}
-            fused. Amber for live, emerald for healthy, mono where it counts, generous line-height
-            where you read.
+            Code arrives.{" "}
+            <strong className="font-semibold text-[#EDEBE6]">
+              Every diff is scanned, every path tested.
+            </strong>{" "}
+            Every risky line explains why — and how to fix it.
           </p>
           <div className="mt-[26px] flex justify-center gap-3">
             <button
@@ -75,55 +85,53 @@ export default function LandingPage() {
               onClick={handleEnterStudio}
               className="cursor-pointer rounded-[9px] border border-white bg-[#EDEBE6] px-[22px] py-[11px] text-sm font-[650] text-[#0E1116] shadow-[0_8px_28px_rgba(255,255,255,0.12)]"
             >
-              Enter the studio
+              Code studio
             </button>
-            <button
-              type="button"
-              onClick={handleToggleRain}
+            <a
+              href="#sample"
               className="cursor-pointer rounded-[9px] border border-white/[0.15] bg-white/[0.04] px-[22px] py-[11px] font-mono text-[13px] font-semibold text-[#EDEBE6] shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
             >
-              ⌘K &nbsp;quick action
-            </button>
+              ⌘ sample review
+            </a>
           </div>
         </header>
 
-        <section className="mt-[38px] overflow-hidden rounded-[14px] border border-white/[0.15] bg-[rgba(20,24,31,0.78)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_30px_80px_rgba(0,0,0,0.55)] backdrop-blur-[16px]">
+        <section
+          id="reviews"
+          className="mt-[38px] overflow-hidden rounded-[14px] border border-white/[0.15] bg-[rgba(20,24,31,0.78)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_30px_80px_rgba(0,0,0,0.55)] backdrop-blur-[16px]"
+        >
           <div className="flex items-center gap-2 border-b border-white/[0.09] px-[18px] py-3 font-mono text-[11px] tracking-[0.1em] text-[#9AA0A8]">
             <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#FF5F57]" />
             <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#FFB224]" />
             <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#34D399]" />
-            <span className="ml-2">STUDIO — PALETTE + READER · unified</span>
+            <span className="ml-2">PRSENTRY — REVIEW + VERDICT · live</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2">
             <div className="border-b border-white/[0.09] p-6 md:border-b-0 md:border-r">
               <h2 className="mb-3.5 font-mono text-[11px] tracking-[0.14em] text-[#9AA0A8]">
-                <b className="text-[#FFB224]">⌘</b> &nbsp;QUICK ACTIONS
+                <b className="text-[#FFB224]">⌘</b> &nbsp;REVIEW ACTIONS
               </h2>
               <div className="flex items-center gap-2.5 rounded-[9px] border border-[rgba(255,178,36,0.3)] bg-[rgba(255,178,36,0.1)] px-[13px] py-[11px] text-[13.5px]">
-                <span>◈ &nbsp;Deploy protocol 042</span>
+                <span>◈ &nbsp;Open latest blocked PR</span>
                 <kbd className="ml-auto rounded-md border border-white/[0.09] border-b-2 px-2 py-0.5 font-mono text-[10.5px] text-[#9AA0A8]">
                   ↵
                 </kbd>
               </div>
-              <button
-                type="button"
-                onClick={handleToggleRain}
-                className="mt-1.5 flex w-full cursor-pointer items-center gap-2.5 rounded-[9px] border border-white/[0.09] bg-white/[0.02] px-[13px] py-[11px] text-left text-[13.5px] text-[#9AA0A8]"
-              >
-                <span>✦ &nbsp;Toggle code rain</span>
-                <kbd className="ml-auto rounded-md border border-white/[0.09] border-b-2 px-2 py-0.5 font-mono text-[10.5px] text-[#9AA0A8]">
-                  R
-                </kbd>
-              </button>
               <div className="mt-1.5 flex items-center gap-2.5 rounded-[9px] border border-white/[0.09] bg-white/[0.02] px-[13px] py-[11px] text-[13.5px] text-[#9AA0A8]">
-                <span>▦ &nbsp;Snap to 24px grid</span>
+                <span>✦ &nbsp;Filter high severity</span>
+                <kbd className="ml-auto rounded-md border border-white/[0.09] border-b-2 px-2 py-0.5 font-mono text-[10.5px] text-[#9AA0A8]">
+                  H
+                </kbd>
+              </div>
+              <div className="mt-1.5 flex items-center gap-2.5 rounded-[9px] border border-white/[0.09] bg-white/[0.02] px-[13px] py-[11px] text-[13.5px] text-[#9AA0A8]">
+                <span>▦ &nbsp;Jump to findings</span>
                 <kbd className="ml-auto rounded-md border border-white/[0.09] border-b-2 px-2 py-0.5 font-mono text-[10.5px] text-[#9AA0A8]">
                   G
                 </kbd>
               </div>
               <div className="mt-3.5">
                 <div className="mb-1.5 flex justify-between font-mono text-[11px] text-[#9AA0A8]">
-                  <span>FOCUS · DAY SESSION</span>
+                  <span>COVERAGE · REVIEWED DIFFS</span>
                   <span className="text-[#34D399]">72%</span>
                 </div>
                 <div className="h-[7px] overflow-hidden rounded-full border border-white/[0.09] bg-white/[0.07]">
@@ -131,74 +139,76 @@ export default function LandingPage() {
                 </div>
               </div>
             </div>
-            <div className="p-6">
+            <div id="sample" className="p-6">
               <h2 className="mb-3.5 font-mono text-[11px] tracking-[0.14em] text-[#9AA0A8]">
-                <b className="text-[#34D399]">§</b> &nbsp;READER — 01 / OBJECTIVE
+                <b className="text-[#34D399]">§</b> &nbsp;SAMPLE — PR #42 / BLOCK
               </h2>
               <p className="text-[14.5px] leading-[1.75] text-[#CFCBC2]">
-                <strong className="text-[#EDEBE6]">Hypothesis:</strong> one canvas carries all three
-                ideas — structure from Slate, warmth from Carbon, readability from Daylight.
+                <strong className="text-[#EDEBE6]">Summary:</strong> three files reviewed, two high
+                findings. The signing secret is hardcoded and the query is not parameterized.
               </p>
               <div className="mt-[18px] overflow-hidden rounded-[10px] border border-white/[0.09] bg-[#0A0D12] font-mono text-[12.5px] leading-[1.7]">
                 <pre className="whitespace-pre-wrap px-[18px] py-4 text-[#D8D3C8]">
-                  <span className="text-[#6E7681]"># harmonized tokens</span>
+                  <span className="text-[#6E7681]"># blocked finding</span>
                   {"\n"}
-                  bg: <span className="text-[#FFB224]">#0E1116</span>{" "}
-                  <span className="text-[#6E7681]">· dots 24px · graph 120px · grain 5%</span>
+                  file: <span className="text-[#FFB224]">login_handler.go:48</span>
                   {"\n"}
-                  live: <span className="text-[#FFB224]">#FFB224</span>{"   "}ok:{" "}
-                  <span className="text-[#34D399]">#34D399</span>{"   "}link:{" "}
-                  <span className="text-[#7C8AFF]">#7C8AFF</span>
+                  sev: <span className="text-[#FFB224]">HIGH</span>
+                  {"   "}
+                  cat: <span className="text-[#7C8AFF]">security</span>
                   {"\n"}
-                  type: <span className="text-[#34D399]">mono headers · sans 15px/1.75 body</span>
+                  fix: <span className="text-[#34D399]">use $1</span>
                 </pre>
               </div>
             </div>
           </div>
         </section>
 
-        <section className="mt-[18px] grid grid-cols-1 overflow-hidden rounded-xl border border-white/[0.09] bg-[rgba(20,24,31,0.6)] md:grid-cols-3">
-          <article className="border-b border-white/[0.09] p-6 md:border-b-0 md:border-r">
+        <section
+          id="pipeline"
+          className="mt-[18px] grid grid-cols-1 overflow-hidden rounded-xl border border-white/[0.09] bg-[rgba(20,24,31,0.6)] md:grid-cols-3"
+        >
+          <article id="security" className="border-b border-white/[0.09] p-6 md:border-b-0 md:border-r">
             <div className="font-mono text-[10.5px] tracking-[0.12em] text-[#FFB224]">
-              FROM SLATE — STRUCTURE
+              01 · GO WEBHOOK
             </div>
-            <h3 className="mb-[7px] mt-2.5 text-sm">1px hairlines + vignette</h3>
+            <h3 className="mb-[7px] mt-2.5 text-sm">HMAC-SHA256 on every payload</h3>
             <p className="text-[13px] leading-[1.7] text-[#9AA0A8]">
-              Crisp borders, centered vignette. Content floats, chrome disappears.
+              The signature is checked before JSON is parsed, then a 30-file guardrail.
             </p>
           </article>
           <article className="border-b border-white/[0.09] p-6 md:border-b-0 md:border-r">
             <div className="font-mono text-[10.5px] tracking-[0.12em] text-[#34D399]">
-              FROM CARBON — FEEL
+              02 · AI REVIEW
             </div>
-            <h3 className="mb-[7px] mt-2.5 text-sm">Grain + amber / emerald</h3>
+            <h3 className="mb-[7px] mt-2.5 text-sm">Structured JSON findings</h3>
             <p className="text-[13px] leading-[1.7] text-[#9AA0A8]">
-              SVG noise for tactility. Amber = live, emerald = healthy. Nothing else.
+              Security, bug, and performance findings come back as structured JSON.
             </p>
           </article>
           <article className="p-6">
             <div className="font-mono text-[10.5px] tracking-[0.12em] text-[#7C8AFF]">
-              FROM DAYLIGHT — READ
+              03 · TRIAGE
             </div>
-            <h3 className="mb-[7px] mt-2.5 text-sm">Graph + generous type</h3>
+            <h3 className="mb-[7px] mt-2.5 text-sm">Why the line is risky</h3>
             <p className="text-[13px] leading-[1.7] text-[#9AA0A8]">
-              Faint 120px graph for alignment. 15px / 1.75 body for long sessions.
+              Every block explains why the line is risky and how to fix it.
             </p>
           </article>
         </section>
 
         <div className="mt-[26px] flex flex-wrap justify-center gap-2.5">
           <code className="rounded-lg border border-white/[0.09] bg-white/[0.03] px-[13px] py-[7px] font-mono text-[11.5px] text-[#9AA0A8]">
-            <b className="text-[#EDEBE6]">base</b> #0E1116
+            <b className="text-[#EDEBE6]">webhook</b> HMAC-SHA256
           </code>
           <code className="rounded-lg border border-white/[0.09] bg-white/[0.03] px-[13px] py-[7px] font-mono text-[11.5px] text-[#9AA0A8]">
-            <b className="text-[#EDEBE6]">texture</b> dots + grain + graph
+            <b className="text-[#EDEBE6]">engine</b> AI
           </code>
           <code className="rounded-lg border border-white/[0.09] bg-white/[0.03] px-[13px] py-[7px] font-mono text-[11.5px] text-[#9AA0A8]">
-            <b className="text-[#EDEBE6]">rain</b> top 620px · fades ↓
+            <b className="text-[#EDEBE6]">score</b> 1.0–5.0
           </code>
           <code className="rounded-lg border border-white/[0.09] bg-white/[0.03] px-[13px] py-[7px] font-mono text-[11.5px] text-[#9AA0A8]">
-            <b className="text-[#EDEBE6]">accents</b> #FFB224 · #34D399
+            <b className="text-[#EDEBE6]">verdict</b> block · caution · safe
           </code>
         </div>
       </div>
