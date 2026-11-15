@@ -63,7 +63,7 @@ export default function AuthGate() {
   async function handleGitHubContinue() {
     setError(null);
     setSubmitting(true);
-    setOauthStatus("Generating 192-bit CSRF state nonce via crypto.getRandomValues()...");
+    setOauthStatus("Checking the sign-in state…");
     try {
       const result = await loginWithGitHubOAuth(githubHandle);
       if (!result.ok) {
@@ -71,7 +71,7 @@ export default function AuthGate() {
         setError(result.error ?? "GitHub OAuth failed.");
         return;
       }
-      setOauthStatus(`CSRF state ${result.stateNonce.slice(0, 12)}... verified. Redirecting...`);
+      setOauthStatus("State checked. Opening the dashboard…");
       navigate("/dashboard", { replace: true });
     } finally {
       setSubmitting(false);
@@ -134,7 +134,7 @@ export default function AuthGate() {
           to="/"
           className="inline-flex items-center gap-2 font-mono text-xs text-text-secondary hover:text-[#7C8AFF] transition-colors"
         >
-          <span>← Back to Overview</span>
+          <span>← Back to homepage</span>
         </Link>
 
         <div className="flex items-center gap-2 font-mono text-xs">
@@ -149,29 +149,17 @@ export default function AuthGate() {
       {/* Centered Elevated #141820 Auth Card */}
       <main className="relative z-10 my-auto mx-auto w-full max-w-md py-8">
         <div className="studio-panel rounded-lg p-6 sm:p-7 space-y-6">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[11px] uppercase tracking-wider text-[#FFB224]">
-                INSTITUTIONAL AUTH GATE
-              </span>
-              <Badge variant="safe">SHA-256 + CSRF</Badge>
-            </div>
-            <h1 className="font-mono text-xl font-bold text-text-primary">
-              {user && isLocked
-                ? `Session Locked (@${user.username})`
-                : "Authenticate to PRSentry"}
-            </h1>
-            <p className="text-xs text-text-secondary leading-relaxed">
-              Sessions are isolated per student handle (<code className="font-mono">prsentry_user_*</code>)
-              so shared lab machines never leak reviews or grading feedback.
-            </p>
+          <div>
+            <span className="font-mono text-[11px] uppercase tracking-wider text-[#FFB224]">
+              Sign in to PRSentry
+            </span>
           </div>
 
           {/* If already logged in and unlocked, offer instant continuation */}
           {user && !isLocked && (
             <div className="rounded-md border border-[#34D399]/35 bg-[#34D399]/10 p-4 space-y-3">
               <div className="flex items-center justify-between text-xs font-mono">
-                <span className="text-[#34D399]">Active Session: @{user.username}</span>
+                <span className="text-[#34D399]">Signed in as @{user.username}</span>
                 <Badge variant="open">{user.provider}</Badge>
               </div>
               <div className="flex items-center gap-2">
@@ -180,14 +168,14 @@ export default function AuthGate() {
                   onClick={() => navigate("/dashboard")}
                   className="flex-1 rounded-md bg-[#34D399] px-3 py-2 font-mono text-xs font-semibold text-[#0E1116] hover:bg-[#34D399]/90 cursor-pointer"
                 >
-                  Continue to Dashboard →
+                  Code studio →
                 </button>
                 <button
                   type="button"
                   onClick={logout}
                   className="rounded-md border border-white/[0.12] bg-[#0E1116] px-3 py-2 font-mono text-xs text-text-secondary hover:text-text-primary cursor-pointer"
                 >
-                  Switch User
+                  Switch user
                 </button>
               </div>
             </div>
@@ -209,14 +197,14 @@ export default function AuthGate() {
                     type="password"
                     value={unlockPassword}
                     onChange={(e) => setUnlockPassword(e.target.value)}
-                    placeholder="Enter your password to unlock"
+                    placeholder="Enter your password"
                     className="w-full rounded-md border border-white/[0.12] bg-[#0E1116] px-3 py-2 font-mono text-xs text-text-primary focus:border-[#7C8AFF] focus:outline-none"
                   />
                 </div>
               ) : (
                 <p className="font-mono text-xs text-text-secondary">
-                  GitHub OAuth session for <span className="text-text-primary">@{user.username}</span>{" "}
-                  is currently locked.
+                  <span className="text-text-primary">@{user.username}</span> is locked on this
+                  machine.
                 </p>
               )}
 
@@ -231,14 +219,14 @@ export default function AuthGate() {
                   type="submit"
                   className="flex-1 rounded-md bg-[#7C8AFF] px-4 py-2 font-mono text-xs font-semibold text-[#0E1116] hover:bg-[#7C8AFF]/90 cursor-pointer"
                 >
-                  Unlock Session →
+                  Unlock the queue →
                 </button>
                 <button
                   type="button"
                   onClick={logout}
                   className="rounded-md border border-white/[0.12] bg-[#0E1116] px-3 py-2 font-mono text-xs text-[#F87171] hover:border-[#F87171]/40 cursor-pointer"
                 >
-                  Log Out
+                  Sign out
                 </button>
               </div>
             </form>
@@ -251,10 +239,10 @@ export default function AuthGate() {
                     htmlFor="github-handle"
                     className="font-mono text-xs font-medium text-text-primary"
                   >
-                    GitHub OAuth Handle
+                    GitHub handle
                   </label>
                   <span className="font-mono text-[10px] text-[#34D399]">
-                    CSRF state nonce enabled
+                    CSRF check on
                   </span>
                 </div>
 
@@ -293,7 +281,7 @@ export default function AuthGate() {
               <div className="relative flex items-center py-1">
                 <div className="flex-grow border-t border-white/[0.08]" />
                 <span className="mx-3 shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">
-                  OR INSTITUTIONAL LOCAL ACCOUNT
+                  OR LOCAL ACCOUNT
                 </span>
                 <div className="flex-grow border-t border-white/[0.08]" />
               </div>
@@ -416,7 +404,7 @@ export default function AuthGate() {
                 {activeTab === "register" && (
                   <div className="rounded-md border border-white/[0.08] bg-[#0E1116]/80 p-3 space-y-2.5">
                     <div className="flex items-center justify-between font-mono text-[11px]">
-                      <span className="text-text-secondary">Password Policy Strength</span>
+                      <span className="text-text-secondary">Password strength</span>
                       <span
                         className={
                           strength.isValid
@@ -463,7 +451,7 @@ export default function AuthGate() {
 
                     {liveDigestPreview && (
                       <div className="pt-1.5 border-t border-white/[0.06] font-mono text-[10px] text-text-muted truncate">
-                        Web Crypto SHA-256: <span className="text-[#7C8AFF]">{liveDigestPreview}…</span>
+                        SHA-256: <span className="text-[#7C8AFF]">{liveDigestPreview}…</span>
                       </div>
                     )}
                   </div>
@@ -489,8 +477,8 @@ export default function AuthGate() {
                   "
                 >
                   {activeTab === "register"
-                    ? "Create Institutional Account & Open Dashboard →"
-                    : "Sign In to Dashboard →"}
+                    ? "Create account & open the dashboard →"
+                    : "Sign in to the dashboard →"}
                 </button>
               </form>
             </>
