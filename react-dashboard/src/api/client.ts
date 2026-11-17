@@ -26,6 +26,7 @@ async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: "GET",
     headers,
+    credentials: "include",
     signal,
   });
 
@@ -79,4 +80,31 @@ export function fetchReviewDetail(reviewId: string, signal?: AbortSignal): Promi
 
 export function fetchDashboardStats(signal?: AbortSignal): Promise<DashboardStats> {
   return request<DashboardStats>("/stats", signal);
+}
+
+export interface GitHubSession {
+  login: string;
+  name: string;
+  avatar_url: string;
+  repositories: string[];
+}
+
+export async function fetchGitHubSession(signal?: AbortSignal): Promise<GitHubSession | null> {
+  const response = await fetch(`${API_BASE}/auth/me`, {
+    method: "GET",
+    credentials: "include",
+    signal,
+  });
+  if (response.status === 401) return null;
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return (await response.json()) as GitHubSession;
+}
+
+export async function logoutGitHubSession(): Promise<void> {
+  await fetch(`${API_BASE}/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  });
 }

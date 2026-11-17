@@ -272,6 +272,7 @@ type ListPRsFilter struct {
 	Status         string
 	Recommendation string
 	Limit          int
+	UserID         string
 }
 
 // PRSummary represents a pull request alongside its latest review run status.
@@ -414,9 +415,25 @@ func (s *Store) ListPRs(ctx context.Context, filter ListPRsFilter) ([]PRSummary,
 		WHERE ($1 = '' OR r.full_name = $1)
 		  AND ($2 = '' OR pr.status = $2 OR lr.status = $2)
 		  AND ($3 = '' OR lr.merge_recommendation = $3)
+		  AND (
+		    $5::uuid IS NULL
+		    OR EXISTS (
+		      SELECT 1 FROM installations i
+		      WHERE i.id = r.installation_id AND i.installed_by = $5::uuid
+		    )
+		  )
 		ORDER BY lr.created_at DESC
 		LIMIT $4
 	`
+
+	var userUUID pgtype.UUID
+	if strings.TrimSpace(filter.UserID) != "" {
+		parsed, parseErr := parseUUID(filter.UserID)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		userUUID = parsed
+	}
 
 	rows, err := s.pool.Query(
 		ctx,
@@ -425,6 +442,7 @@ func (s *Store) ListPRs(ctx context.Context, filter ListPRsFilter) ([]PRSummary,
 		strings.ToLower(strings.TrimSpace(filter.Status)),
 		strings.ToLower(strings.TrimSpace(filter.Recommendation)),
 		limit,
+		userUUID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("querying PRs: %w", err)

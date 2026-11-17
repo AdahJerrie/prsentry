@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import AuthComplete from "./pages/AuthComplete";
 import AuthGate from "./pages/AuthGate";
 import LandingPage from "./pages/LandingPage";
 import StatsTrends from "./pages/StatsTrends";
@@ -18,6 +19,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/auth" element={<AuthGate />} />
+          <Route path="/auth/complete" element={<AuthComplete />} />
           <Route element={<RequireAuth />}>
             <Route path="/dashboard" element={<Workspace />} />
             <Route path="/prs/:id" element={<Workspace />} />

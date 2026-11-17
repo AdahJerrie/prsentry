@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import Badge from "../components/Badge";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -10,6 +10,27 @@ import {
 
 type AuthTab = "signin" | "register";
 
+function githubAuthError(code: string): string {
+  switch (code) {
+    case "github_not_configured":
+      return "GitHub OAuth is not configured on the server yet.";
+    case "install_not_configured":
+      return "Signed in, but the GitHub App slug is missing, so repository install cannot start.";
+    case "oauth_denied":
+      return "GitHub sign-in was cancelled.";
+    case "oauth_state":
+      return "GitHub sign-in expired. Start again.";
+    case "oauth_exchange":
+      return "GitHub did not accept the sign-in. Check the app client id and secret.";
+    case "install_failed":
+      return "The app installed, but the selected repositories could not be saved.";
+    case "session":
+      return "The GitHub session was missing. Sign in again.";
+    default:
+      return "GitHub sign-in failed.";
+  }
+}
+
 export default function AuthGate() {
   const navigate = useNavigate();
   const {
@@ -17,14 +38,12 @@ export default function AuthGate() {
     isLocked,
     loginLocal,
     registerLocal,
-    loginWithGitHubOAuth,
     unlockSession,
     logout,
   } = useAuth();
+  const [searchParams] = useSearchParams();
 
   const [activeTab, setActiveTab] = useState<AuthTab>("signin");
-  const [githubHandle, setGithubHandle] = useState("jerrie");
-  const [oauthStatus, setOauthStatus] = useState<string | null>(null);
 
   // Local form state
   const [fullName, setFullName] = useState("");
@@ -37,6 +56,7 @@ export default function AuthGate() {
   const [unlockPassword, setUnlockPassword] = useState("");
 
   const [error, setError] = useState<string | null>(null);
+  const oauthError = searchParams.get("error");
   const [submitting, setSubmitting] = useState(false);
 
   const strength = evaluatePasswordStrength(password);
@@ -60,22 +80,8 @@ export default function AuthGate() {
     };
   }, [password]);
 
-  async function handleGitHubContinue() {
-    setError(null);
-    setSubmitting(true);
-    setOauthStatus("Checking the sign-in state…");
-    try {
-      const result = await loginWithGitHubOAuth(githubHandle);
-      if (!result.ok) {
-        setOauthStatus(null);
-        setError(result.error ?? "GitHub OAuth failed.");
-        return;
-      }
-      setOauthStatus("State checked. Opening the dashboard…");
-      navigate("/dashboard", { replace: true });
-    } finally {
-      setSubmitting(false);
-    }
+  function handleGitHubContinue() {
+    window.location.assign("/api/v1/auth/github");
   }
 
   async function handleLocalSubmit(e: FormEvent) {
@@ -235,46 +241,32 @@ export default function AuthGate() {
               {/* Primary OAuth Option: Continue with GitHub */}
               <div className="space-y-2.5 rounded-md border border-white/[0.08] bg-[#0E1116]/70 p-4">
                 <div className="flex items-center justify-between">
-                  <label
-                    htmlFor="github-handle"
-                    className="font-mono text-xs font-medium text-text-primary"
-                  >
-                    GitHub handle
-                  </label>
+                  <span className="font-mono text-xs font-medium text-text-primary">
+                    GitHub
+                  </span>
                   <span className="font-mono text-[10px] text-[#34D399]">
-                    CSRF check on
+                    OAuth + repository install
                   </span>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs text-text-muted">@</span>
-                  <input
-                    id="github-handle"
-                    type="text"
-                    value={githubHandle}
-                    onChange={(e) => setGithubHandle(e.target.value)}
-                    placeholder="jerrie"
-                    maxLength={24}
-                    className="flex-1 rounded border border-white/[0.1] bg-[#141820] px-2.5 py-1.5 font-mono text-xs text-text-primary focus:border-[#7C8AFF] focus:outline-none"
-                  />
-                </div>
-
+                <p className="text-xs leading-relaxed text-text-secondary">
+                  Sign in with GitHub, then choose all repositories or only the ones PRSentry should review.
+                </p>
                 <button
                   type="button"
-                  disabled={submitting}
-                  onClick={() => void handleGitHubContinue()}
+                  onClick={handleGitHubContinue}
                   className="
                     w-full flex items-center justify-center gap-2 rounded-md
                     bg-[#E6EDF3] px-4 py-2.5 font-mono text-xs font-semibold text-[#0E1116]
                     hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#7C8AFF]
-                    transition-colors cursor-pointer disabled:opacity-50
+                    transition-colors cursor-pointer
                   "
                 >
                   <span>◈ Continue with GitHub</span>
                 </button>
-
-                {oauthStatus && (
-                  <p className="font-mono text-[11px] text-[#34D399]">{oauthStatus}</p>
+                {oauthError && (
+                  <p role="alert" className="font-mono text-[11px] text-[#F87171]">
+                    {githubAuthError(oauthError)}
+                  </p>
                 )}
               </div>
 
