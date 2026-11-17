@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"prsentry/go-service/internal/db"
+	"prsentry/go-service/internal/github"
 	"prsentry/go-service/internal/review"
 )
 
@@ -34,6 +35,10 @@ func (m *mockGH) PostPRComment(_ context.Context, _ int64, _, _ string, _ int, b
 	defer m.mu.Unlock()
 	m.comments = append(m.comments, body)
 	return nil
+}
+
+func (m *mockGH) ListInstallationRepos(context.Context, int64) ([]github.InstalledRepo, error) {
+	return nil, fmt.Errorf("github unavailable")
 }
 
 type mockReviewer struct {
@@ -60,9 +65,12 @@ func (m *mockReviewer) SubmitForReview(_ context.Context, prID int, _ string, _ 
 }
 
 type mockStore struct {
-	done chan struct{}
-	meta db.PRMetadata
-	resp *review.ReviewResponse
+	done        chan struct{}
+	meta        db.PRMetadata
+	resp        *review.ReviewResponse
+	blockReview bool
+	syncedMode  string
+	syncedRepos int
 }
 
 func (m *mockStore) SaveFullReviewResult(_ context.Context, meta db.PRMetadata, result *review.ReviewResponse) (string, error) {
@@ -74,6 +82,16 @@ func (m *mockStore) SaveFullReviewResult(_ context.Context, meta db.PRMetadata, 
 		close(m.done)
 	}
 	return "550e8400-e29b-41d4-a716-446655440000", nil
+}
+
+func (m *mockStore) RepoMonitored(context.Context, int64, int64) (bool, error) {
+	return !m.blockReview, nil
+}
+
+func (m *mockStore) SyncInstallation(_ context.Context, _ string, _ int64, repos []db.RepoRef, _, mode string) error {
+	m.syncedMode = mode
+	m.syncedRepos = len(repos)
+	return nil
 }
 
 func signPayload(secret string, body []byte) string {
@@ -169,5 +187,72 @@ func TestWebhookEndToEndAndLargePRGuardrail(t *testing.T) {
 	}
 	if store.resp.MergeRecommendation != "caution" {
 		t.Fatalf("expected caution merge recommendation for oversized PR, got %s", store.resp.MergeRecommendation)
+	}
+}
+
+func TestWebhookSkipsUnmonitoredRepository(t *testing.T) {
+	secret := "test_webhook_secret"
+	rev := &mockReviewer{}
+	store := &mockStore{done: make(chan struct{}), blockReview: true}
+	handler := NewHandler(secret, &mockGH{}, rev, store)
+
+	payload := map[string]any{
+		"action":       "opened",
+		"installation": map[string]any{"id": 42},
+		"repository": map[string]any{
+			"id":        7,
+			"full_name": "acme/private",
+			"owner":     map[string]any{"login": "acme"},
+		},
+		"pull_request": map[string]any{
+			"number": 1,
+			"title":  "Should not review",
+			"state":  "open",
+			"user":   map[string]any{"login": "ada"},
+			"head":   map[string]any{"sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		},
+	}
+	raw, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewReader(raw))
+	req.Header.Set("X-Hub-Signature-256", signPayload(secret, raw))
+	req.Header.Set("X-GitHub-Event", "pull_request")
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for unmonitored repository, got %d", rec.Code)
+	}
+	if rev.called {
+		t.Fatal("review service should not run for an unmonitored repository")
+	}
+}
+
+func TestInstallationWebhookStoresPayloadReposWhenGitHubListFails(t *testing.T) {
+	secret := "test_webhook_secret"
+	store := &mockStore{done: make(chan struct{})}
+	handler := NewHandler(secret, &mockGH{}, &mockReviewer{}, store)
+
+	payload := map[string]any{
+		"action": "created",
+		"installation": map[string]any{
+			"id": 77,
+			"account": map[string]any{"login": "acme"},
+		},
+		"repositories": []map[string]any{
+			{"id": 5, "full_name": "acme/api"},
+		},
+	}
+	raw, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewReader(raw))
+	req.Header.Set("X-Hub-Signature-256", signPayload(secret, raw))
+	req.Header.Set("X-GitHub-Event", "installation")
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if store.syncedMode != "add" || store.syncedRepos != 1 {
+		t.Fatalf("expected payload repos to be added, mode=%s count=%d", store.syncedMode, store.syncedRepos)
 	}
 }

@@ -22,11 +22,43 @@ type DashboardStore interface {
 }
 
 type APIHandler struct {
-	store DashboardStore
+	store    DashboardStore
+	sessions interface {
+		LookupSession(ctx context.Context, sessionID string) (*db.SessionProfile, error)
+		UserOwnsPullRequest(ctx context.Context, userID, prID string) (bool, error)
+		UserOwnsReview(ctx context.Context, userID, reviewID string) (bool, error)
+	}
 }
 
 func NewAPIHandler(store DashboardStore) *APIHandler {
 	return &APIHandler{store: store}
+}
+
+// UseSessions scopes dashboard reads to the signed-in GitHub user when the session cookie is present.
+func (h *APIHandler) UseSessions(sessions interface {
+	LookupSession(ctx context.Context, sessionID string) (*db.SessionProfile, error)
+	UserOwnsPullRequest(ctx context.Context, userID, prID string) (bool, error)
+	UserOwnsReview(ctx context.Context, userID, reviewID string) (bool, error)
+}) {
+	h.sessions = sessions
+}
+
+func (h *APIHandler) viewerID(r *http.Request) (string, bool, error) {
+	if h.sessions == nil {
+		return "", false, nil
+	}
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil || strings.TrimSpace(cookie.Value) == "" {
+		return "", false, nil
+	}
+	profile, err := h.sessions.LookupSession(r.Context(), cookie.Value)
+	if errors.Is(err, db.ErrNotFound) {
+		return "", false, err
+	}
+	if err != nil || profile == nil {
+		return "", false, err
+	}
+	return profile.UserID, true, nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
@@ -91,6 +123,16 @@ func (h *APIHandler) ListPRsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	viewerID, authed, err := h.viewerID(r)
+	if errors.Is(err, db.ErrNotFound) {
+		writeError(w, http.StatusUnauthorized, "session expired")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read session")
+		return
+	}
+
 	q := r.URL.Query()
 	limit := 50
 	if rawLimit := strings.TrimSpace(q.Get("limit")); rawLimit != "" {
@@ -124,12 +166,16 @@ func (h *APIHandler) ListPRsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	prs, err := h.store.ListPRs(r.Context(), db.ListPRsFilter{
+	filter := db.ListPRsFilter{
 		Repo:           repo,
 		Status:         status,
 		Recommendation: recommendation,
 		Limit:          limit,
-	})
+	}
+	if authed {
+		filter.UserID = viewerID
+	}
+	prs, err := h.store.ListPRs(r.Context(), filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch pull requests")
 		return
@@ -159,6 +205,27 @@ func (h *APIHandler) PRSubrouteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	parts := strings.Split(trimmed, "/")
+	viewerID, authed, err := h.viewerID(r)
+	if errors.Is(err, db.ErrNotFound) {
+		writeError(w, http.StatusUnauthorized, "session expired")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read session")
+		return
+	}
+	if authed && len(parts) > 0 {
+		owns, ownErr := h.sessions.UserOwnsPullRequest(r.Context(), viewerID, parts[0])
+		if ownErr != nil {
+			writeError(w, http.StatusInternalServerError, "failed to authorize pull request")
+			return
+		}
+		if !owns {
+			writeError(w, http.StatusNotFound, "pull request not found")
+			return
+		}
+	}
+
 	switch {
 	case len(parts) == 1:
 		detail, err := h.store.GetPRDetail(r.Context(), parts[0])
@@ -218,6 +285,27 @@ func (h *APIHandler) GetReviewDetailHandler(w http.ResponseWriter, r *http.Reque
 	if trimmed == "" || strings.Contains(trimmed, "/") {
 		writeError(w, http.StatusBadRequest, "invalid review ID")
 		return
+	}
+
+	viewerID, authed, err := h.viewerID(r)
+	if errors.Is(err, db.ErrNotFound) {
+		writeError(w, http.StatusUnauthorized, "session expired")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to read session")
+		return
+	}
+	if authed {
+		owns, ownErr := h.sessions.UserOwnsReview(r.Context(), viewerID, trimmed)
+		if ownErr != nil {
+			writeError(w, http.StatusInternalServerError, "failed to authorize review")
+			return
+		}
+		if !owns {
+			writeError(w, http.StatusNotFound, "review not found")
+			return
+		}
 	}
 
 	detail, err := h.store.GetReviewDetail(r.Context(), trimmed)

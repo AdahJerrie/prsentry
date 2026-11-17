@@ -29,6 +29,7 @@ const (
 type GitHubService interface {
 	FetchPRFiles(ctx context.Context, installationID int64, owner, repo string, prNumber int) ([]review.FileDiff, error)
 	PostPRComment(ctx context.Context, installationID int64, owner, repo string, prNumber int, body string) error
+	ListInstallationRepos(ctx context.Context, installationID int64) ([]github.InstalledRepo, error)
 }
 
 // ReviewService abstracts Python AI analysis calls for testability.
@@ -39,6 +40,8 @@ type ReviewService interface {
 // ReviewStore abstracts transactional review persistence for testability.
 type ReviewStore interface {
 	SaveFullReviewResult(ctx context.Context, meta db.PRMetadata, result *review.ReviewResponse) (string, error)
+	RepoMonitored(ctx context.Context, installationID, githubRepoID int64) (bool, error)
+	SyncInstallation(ctx context.Context, account string, installationID int64, repos []db.RepoRef, userID, mode string) error
 }
 
 func verifySignature(secret string, payload []byte, signatureHeader string) bool {
@@ -91,6 +94,15 @@ func NewHandler(secret string, ghClient GitHubService, reviewClient ReviewServic
 			_, _ = w.Write([]byte(`{"status":"pong"}`))
 			return
 		}
+		if event == "installation" || event == "installation_repositories" {
+			if err := syncInstallationEvent(r.Context(), ghClient, store, body); err != nil {
+				log.Printf("installation sync failed: %v", err)
+				http.Error(w, "failed to sync installation", http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		if event != "" && event != "pull_request" {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -105,6 +117,18 @@ func NewHandler(secret string, ghClient GitHubService, reviewClient ReviewServic
 
 		if payload.Action != "opened" && payload.Action != "synchronize" && payload.Action != "reopened" {
 			log.Printf("Ignoring pull_request action: %s\n", payload.Action)
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		monitored, err := store.RepoMonitored(r.Context(), payload.Installation.ID, payload.Repository.ID)
+		if err != nil {
+			log.Printf("failed to check monitored repository: %v", err)
+			http.Error(w, "failed to check repository", http.StatusInternalServerError)
+			return
+		}
+		if !monitored {
+			log.Printf("Ignoring pull_request for unmonitored repository %s\n", payload.Repository.FullName)
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -215,4 +239,49 @@ func NewHandler(secret string, ghClient GitHubService, reviewClient ReviewServic
 			)
 		}(payload, parts[0], parts[1])
 	}
+}
+
+func syncInstallationEvent(ctx context.Context, gh GitHubService, store ReviewStore, body []byte) error {
+	var payload GitHubWebhookPayload
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return err
+	}
+	if payload.Installation.ID <= 0 {
+		return nil
+	}
+
+	account := payload.Installation.Account.Login
+	action := payload.Action
+	if action == "deleted" || action == "suspend" {
+		return store.SyncInstallation(ctx, account, payload.Installation.ID, nil, "", "deactivate_all")
+	}
+
+	if action == "removed" {
+		return store.SyncInstallation(ctx, account, payload.Installation.ID, repoRefs(payload.RepositoriesRemoved), "", "remove")
+	}
+
+	listed, err := gh.ListInstallationRepos(ctx, payload.Installation.ID)
+	if err == nil {
+		refs := make([]db.RepoRef, 0, len(listed))
+		for _, repo := range listed {
+			refs = append(refs, db.RepoRef{GithubRepoID: repo.ID, FullName: repo.FullName})
+		}
+		return store.SyncInstallation(ctx, account, payload.Installation.ID, refs, "", "replace")
+	}
+	log.Printf("listing installation %d repositories failed, using webhook payload: %v", payload.Installation.ID, err)
+
+	refs := repoRefs(payload.Repositories)
+	if action == "added" {
+		refs = append(refs, repoRefs(payload.RepositoriesAdded)...)
+		return store.SyncInstallation(ctx, account, payload.Installation.ID, refs, "", "add")
+	}
+	return store.SyncInstallation(ctx, account, payload.Installation.ID, refs, "", "add")
+}
+
+func repoRefs(repos []webhookRepo) []db.RepoRef {
+	out := make([]db.RepoRef, 0, len(repos))
+	for _, repo := range repos {
+		out = append(out, db.RepoRef{GithubRepoID: repo.ID, FullName: repo.FullName})
+	}
+	return out
 }

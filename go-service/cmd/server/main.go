@@ -103,7 +103,22 @@ func main() {
 	mux.HandleFunc("/webhook", webhook.NewHandler(secret, ghClient, reviewClient, store))
 
 	apiHandler := api.NewAPIHandler(store)
+	apiHandler.UseSessions(store)
 	apiHandler.RegisterRoutes(mux)
+
+	frontendURL := strings.TrimSpace(os.Getenv("FRONTEND_URL"))
+	if frontendURL == "" {
+		frontendURL = "http://localhost:5173"
+	}
+	authHandler := api.NewAuthHandler(store, ghClient, api.AuthConfig{
+		ClientID:     strings.TrimSpace(os.Getenv("GITHUB_APP_CLIENT_ID")),
+		ClientSecret: strings.TrimSpace(os.Getenv("GITHUB_APP_CLIENT_SECRET")),
+		AppSlug:      strings.TrimSpace(os.Getenv("GITHUB_APP_SLUG")),
+		CallbackURL:  strings.TrimSpace(os.Getenv("GITHUB_OAUTH_CALLBACK_URL")),
+		FrontendURL:  frontendURL,
+		CookieSecure: envMode == "production",
+	})
+	authHandler.Register(mux)
 
 	rawOrigins := os.Getenv("ALLOWED_ORIGINS")
 	if rawOrigins == "" && envMode != "production" {

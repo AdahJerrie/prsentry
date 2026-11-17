@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -98,6 +99,173 @@ func (c *Client) getInstallationToken(ctx context.Context, installationID int64)
 		return "", fmt.Errorf("installation token response was empty")
 	}
 	return tokenResp.Token, nil
+}
+
+// InstalledRepo is a repository the GitHub App installation can access.
+type InstalledRepo struct {
+	ID       int64
+	FullName string
+}
+
+// ExchangeOAuthCode trades the GitHub OAuth callback code for a user access token.
+func (c *Client) ExchangeOAuthCode(ctx context.Context, clientID, clientSecret, code, redirectURI string) (string, error) {
+	form := url.Values{}
+	form.Set("client_id", clientID)
+	form.Set("client_secret", clientSecret)
+	form.Set("code", code)
+	form.Set("redirect_uri", redirectURI)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://github.com/login/oauth/access_token", strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "PRSentry")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("exchanging oauth code: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var payload struct {
+		AccessToken string `json:"access_token"`
+		Error       string `json:"error"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(&payload); err != nil {
+		return "", fmt.Errorf("decoding oauth token response: %w", err)
+	}
+	if payload.AccessToken == "" {
+		if payload.Error == "" {
+			payload.Error = resp.Status
+		}
+		return "", fmt.Errorf("github oauth token exchange failed: %s", payload.Error)
+	}
+	return payload.AccessToken, nil
+}
+
+// FetchAuthenticatedUser loads the GitHub account for an OAuth user token.
+func (c *Client) FetchAuthenticatedUser(ctx context.Context, accessToken string) (login, name, avatar string, githubUserID int64, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/user", nil)
+	if err != nil {
+		return "", "", "", 0, err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", githubAPIVersion)
+	req.Header.Set("User-Agent", "PRSentry")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", "", "", 0, fmt.Errorf("fetching github user: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
+		return "", "", "", 0, fmt.Errorf("unexpected status %d fetching github user: %s", resp.StatusCode, string(body))
+	}
+	var payload struct {
+		ID        int64  `json:"id"`
+		Login     string `json:"login"`
+		Name      string `json:"name"`
+		AvatarURL string `json:"avatar_url"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(&payload); err != nil {
+		return "", "", "", 0, fmt.Errorf("decoding github user: %w", err)
+	}
+	if payload.ID <= 0 || payload.Login == "" {
+		return "", "", "", 0, errors.New("github user response was incomplete")
+	}
+	if payload.Name == "" {
+		payload.Name = payload.Login
+	}
+	return payload.Login, payload.Name, payload.AvatarURL, payload.ID, nil
+}
+
+// GetInstallationAccount returns the account login that owns an installation.
+func (c *Client) GetInstallationAccount(ctx context.Context, installationID int64) (string, error) {
+	jwtToken, err := c.generateJWT()
+	if err != nil {
+		return "", err
+	}
+	endpoint := fmt.Sprintf("%s/app/installations/%d", c.baseURL, installationID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+jwtToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", githubAPIVersion)
+	req.Header.Set("User-Agent", "PRSentry")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("fetching installation: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
+		return "", fmt.Errorf("unexpected status %d fetching installation: %s", resp.StatusCode, string(body))
+	}
+	var payload struct {
+		Account struct {
+			Login string `json:"login"`
+		} `json:"account"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(&payload); err != nil {
+		return "", err
+	}
+	return payload.Account.Login, nil
+}
+
+// ListInstallationRepos returns every repository the installation can access.
+func (c *Client) ListInstallationRepos(ctx context.Context, installationID int64) ([]InstalledRepo, error) {
+	token, err := c.getInstallationToken(ctx, installationID)
+	if err != nil {
+		return nil, err
+	}
+
+	var all []InstalledRepo
+	for page := 1; page <= 10; page++ {
+		endpoint := fmt.Sprintf("%s/installation/repositories?per_page=100&page=%d", c.baseURL, page)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("X-GitHub-Api-Version", githubAPIVersion)
+		req.Header.Set("User-Agent", "PRSentry")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("listing installation repositories: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
+			resp.Body.Close()
+			return nil, fmt.Errorf("unexpected status %d listing installation repositories: %s", resp.StatusCode, string(body))
+		}
+		var payload struct {
+			Repositories []struct {
+				ID       int64  `json:"id"`
+				FullName string `json:"full_name"`
+			} `json:"repositories"`
+		}
+		err = json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(&payload)
+		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("decoding installation repositories: %w", err)
+		}
+		for _, repo := range payload.Repositories {
+			all = append(all, InstalledRepo{ID: repo.ID, FullName: repo.FullName})
+		}
+		if len(payload.Repositories) < 100 {
+			break
+		}
+	}
+	return all, nil
 }
 
 type prFile struct {

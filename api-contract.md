@@ -71,7 +71,8 @@ This is the locked contract for data crossing service boundaries. All three serv
 
 Go listens for `pull_request` events at `POST /webhook`, verified via HMAC-SHA256 signature (`X-Hub-Signature-256` header) against `GITHUB_WEBHOOK_SECRET`.
 
-- **Events handled:** `X-GitHub-Event: pull_request` (`opened`, `synchronize`, `reopened`) and `ping` (`200 OK`).
+- **Events handled:** `X-GitHub-Event: pull_request` (`opened`, `synchronize`, `reopened`), `installation`, `installation_repositories`, and `ping` (`200 OK`).
+- **Repository gate:** A pull request is reviewed only when its repository is an active selection on a known installation. Other repositories are acknowledged with `200 OK` and ignored.
 - **Other events/actions:** Acknowledged with `200 OK` and ignored.
 - **Large PR guardrail:** PRs modifying more than 30 reviewable files bypass LLM calls and record a `"caution"` review run recommending manual review.
 
@@ -196,9 +197,37 @@ Returns aggregate counts (`DashboardStats`) for KPI cards, repository filter opt
 
 ---
 
+## 4. GitHub OAuth and App installation
+
+The GitHub App is registered once. A user signs in with that app's OAuth credentials, then GitHub's install screen is where they choose all repositories or only some.
+
+| Method | Path | Purpose |
+| :--- | :--- | :--- |
+| `GET` | `/api/v1/auth/github` | Redirect to GitHub OAuth. Stores a one-time `state`. |
+| `GET` | `/api/v1/auth/github/callback` | Exchange `code`, set the `prsentry_session` cookie, redirect to the app install screen. |
+| `GET` | `/api/v1/auth/github/setup` | GitHub Setup URL. Saves the installation and its selected repositories, then redirects to `{FRONTEND_URL}/auth/complete`. |
+| `GET` | `/api/v1/auth/me` | Current user and active repositories. `401` when signed out. |
+| `POST` | `/api/v1/auth/logout` | Deletes the session. |
+
+`GET /api/v1/auth/me` response:
+
+```json
+{
+  "login": "jerrie",
+  "name": "Jerrie",
+  "avatar_url": "https://avatars.githubusercontent.com/u/1",
+  "repositories": ["acme/auth-service"]
+}
+```
+
+When the session cookie is present, `GET /api/v1/prs`, `GET /api/v1/prs/:id`, and `GET /api/v1/reviews/:id` only return records for installations linked to that user.
+
+---
+
 ## Change Log
 
 | Date | Change | Reason |
 | :--- | :--- | :--- |
 | 14-09-2026 | Initial contract locked | Week 1 kickoff |
 | 13-11-2026 | Locked Section 3 Go → React response schemas & UUID identifiers | Align Go backend, Postgres UUID schema, and React dashboard |
+| 16-11-2026 | Added GitHub OAuth, installation setup, and monitored-repo review gate | Connect flow for the beta MVP |

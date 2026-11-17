@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { checkApiHealth, fetchPRDetail, fetchPRs } from "../api/client";
+import { checkApiHealth, fetchGitHubSession, fetchPRDetail, fetchPRs } from "../api/client";
 import CodeRain from "../components/atmosphere/CodeRain";
 import CommandBar from "../components/workspace/CommandBar";
 import KpiStrip from "../components/workspace/KpiStrip";
@@ -47,6 +47,7 @@ export default function Workspace() {
   const [apiHealthy, setApiHealthy] = useState<boolean | null>(null);
   const [mobileInspector, setMobileInspector] = useState(Boolean(routeId));
   const [feedback, setFeedback] = useState<BetaFeedbackEntry[]>(() => loadFeedback());
+  const [connectedRepos, setConnectedRepos] = useState<string[]>([]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -54,6 +55,9 @@ export default function Workspace() {
     fetchPRs({ limit: 50 }, controller.signal)
       .then((rows) => setLive(rows))
       .catch(() => setLive([]));
+    fetchGitHubSession(controller.signal)
+      .then((session) => setConnectedRepos(session?.repositories ?? []))
+      .catch(() => setConnectedRepos([]));
     return () => controller.abort();
   }, []);
 
@@ -177,10 +181,10 @@ export default function Workspace() {
   }, [findings, queue]);
 
   const repos = useMemo(() => {
-    const names = new Set<string>(DEMO_REPO_OPTIONS);
+    const names = new Set<string>(connectedRepos.length > 0 ? ["All Repos", ...connectedRepos] : DEMO_REPO_OPTIONS);
     [...live, ...extra].forEach((item) => names.add(item.repo_full_name));
     return Array.from(names);
-  }, [extra, live]);
+  }, [connectedRepos, extra, live]);
 
   return (
     <div className="relative min-h-screen">

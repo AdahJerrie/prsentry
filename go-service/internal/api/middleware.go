@@ -107,6 +107,7 @@ func WrapWithSecurity(next http.Handler, cfg SecurityMiddlewareConfig) http.Hand
 		if origin != "" {
 			if _, ok := allowed[origin]; ok {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.Header().Set("Vary", "Origin")
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -124,7 +125,7 @@ func WrapWithSecurity(next http.Handler, cfg SecurityMiddlewareConfig) http.Hand
 			return
 		}
 
-		if expectedBearer != "" && strings.HasPrefix(r.URL.Path, "/api/") {
+		if expectedBearer != "" && strings.HasPrefix(r.URL.Path, "/api/") && !strings.Contains(r.URL.Path, "/auth/") {
 			authHeader := r.Header.Get("Authorization")
 			if len(authHeader) != len(expectedBearer) ||
 				subtle.ConstantTimeCompare([]byte(authHeader), []byte(expectedBearer)) != 1 {

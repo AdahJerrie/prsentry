@@ -14,6 +14,7 @@ import {
   sha256Hex,
   validateUsername,
 } from "../security/crypto";
+import { logoutGitHubSession } from "../api/client";
 import type { FindingFeedbackRecord, PRDetail } from "../types/api";
 
 export type AuthProviderType = "GitHub" | "Local";
@@ -49,6 +50,7 @@ interface AuthContextValue {
   loginWithGitHubOAuth: (
     githubHandle: string
   ) => Promise<{ ok: boolean; stateNonce: string; error?: string }>;
+  adoptGitHubSession: (login: string, fullName: string) => void;
   lockSession: () => void;
   unlockSession: (passwordOrConfirm?: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
@@ -85,6 +87,10 @@ function getReviewsNamespaceKey(username: string): string {
   return `prsentry_user_${username.toLowerCase()}_reviews`;
 }
 
+function isStoredUsername(username: string): boolean {
+  return validateUsername(username) || /^[a-zA-Z0-9-]{1,39}$/.test(username);
+}
+
 function getFeedbackNamespaceKey(username: string): string {
   return `prsentry_user_${username.toLowerCase()}_feedback`;
 }
@@ -95,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const raw = localStorage.getItem(SESSION_STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw) as SessionUser;
-      if (!parsed?.username || !validateUsername(parsed.username)) return null;
+      if (!parsed?.username || !isStoredUsername(parsed.username)) return null;
       return parsed;
     } catch {
       return null;
@@ -268,6 +274,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { ok: true, stateNonce: issuedStateNonce };
   }, []);
 
+  const adoptGitHubSession = useCallback((login: string, fullName: string) => {
+    const cleanHandle = login.trim();
+    if (!/^[a-zA-Z0-9-]{1,39}$/.test(cleanHandle)) return;
+    const sessionUser: SessionUser = {
+      username: cleanHandle,
+      fullName: fullName.trim() || cleanHandle,
+      provider: "GitHub",
+      authenticatedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionUser));
+    localStorage.removeItem(SESSION_LOCK_KEY);
+    setIsLocked(false);
+    setUser(sessionUser);
+  }, []);
+
   const lockSession = useCallback(() => {
     localStorage.setItem(SESSION_LOCK_KEY, "true");
     setIsLocked(true);
@@ -299,6 +320,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    void logoutGitHubSession().catch(() => undefined);
     localStorage.removeItem(SESSION_STORAGE_KEY);
     localStorage.removeItem(SESSION_LOCK_KEY);
     setIsLocked(false);
@@ -374,6 +396,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       registerLocal,
       loginLocal,
       loginWithGitHubOAuth,
+      adoptGitHubSession,
       lockSession,
       unlockSession,
       logout,
@@ -389,6 +412,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       registerLocal,
       loginLocal,
       loginWithGitHubOAuth,
+      adoptGitHubSession,
       lockSession,
       unlockSession,
       logout,
